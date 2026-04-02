@@ -5,6 +5,7 @@ Active layers:
     so3          SO(3) rotation tools
     laws         steady-state attitude laws
     transitions  finite-rate wrappers around base laws
+    CubeSat      body-fixed CubeSat geometry builders and realizations
     earthdisk    Earth-disk quadrature and face coordinates
     panel        panel-resolved radiator geometry
     propagator   active disk-integrated and panel-resolved sweeps
@@ -19,6 +20,8 @@ from .laws import (LVLHFixed, TargetTracking, TargetTrackingNadirRoll,  # noqa: 
                    SunTracking, InertialDrift, ModeSwitch)              # noqa: F401
 from .transitions import SlewModeSwitch                                # noqa: F401
 from .constants import FACES, S0, J_IR, A_ALB                          # noqa: F401
+from .CubeSat import (CubeSatGeometry, RealizedGeometry, RectSurface,  # noqa: F401
+                      SurfaceNode, build_6u_double_deployable)
 from .earthdisk import (EarthDiskQuadrature, EarthDiskSamples,         # noqa: F401
                         FACE_LOCAL_FRAMES, AzimuthElevationMask)        # noqa: F401
 from .panel import RectangularPanel, PanelLoadingProfile               # noqa: F401

@@ -2,9 +2,9 @@
 
 ## Near-Term
 
-### 1. Build the spacecraft geometry layer
+### 1. Build the CubeSat geometry layer
 
-Create a minimal but robust body-fixed geometry builder with:
+Create and grow the body-fixed `CubeSat` geometry builder with:
 - rectangular surfaces
 - optional patch grids
 - one-sided/two-sided surfaces

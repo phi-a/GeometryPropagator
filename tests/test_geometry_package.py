@@ -5,8 +5,8 @@ from datetime import datetime
 import numpy as np
 
 from geometry import (LVLHFixed, Orbit, RectangularPanel, SlewModeSwitch,
-                      SunTracking, TargetTracking, panel_loading_propagate,
-                      propagate, thermal_propagate)
+                      SunTracking, TargetTracking, build_6u_double_deployable,
+                      panel_loading_propagate, propagate, thermal_propagate)
 from geometry.legacy import propagate as legacy_propagate
 from geometry.legacy import thermal_propagate as legacy_thermal_propagate
 
@@ -64,6 +64,29 @@ class GeometryPackageTests(unittest.TestCase):
             self.assertTrue(np.allclose(before.m, reference.m, atol=1e-9))
             self.assertTrue(np.allclose(at_boundary.m, reference.m, atol=1e-9))
             self.assertFalse(np.allclose(after.m, at_boundary.m, atol=1e-9))
+
+    def test_default_6u_builder_realizes_deployables(self):
+        cubesat = build_6u_double_deployable()
+        realized = cubesat.realize()
+
+        self.assertEqual(len(realized.surfaces), 10)
+        self.assertIn('wing_port_inner', realized.names())
+        self.assertIn('wing_starboard_outer', realized.names())
+
+        port_inner = realized.by_name('wing_port_inner')
+        port_outer = realized.by_name('wing_port_outer')
+        star_inner = realized.by_name('wing_starboard_inner')
+        star_outer = realized.by_name('wing_starboard_outer')
+
+        self.assertTrue(np.allclose(port_inner.normal, [0.0, 1.0, 0.0], atol=1e-9))
+        self.assertTrue(np.allclose(port_outer.normal, [0.0, 1.0, 0.0], atol=1e-9))
+        self.assertTrue(np.allclose(star_inner.normal, [0.0, 1.0, 0.0], atol=1e-9))
+        self.assertTrue(np.allclose(star_outer.normal, [0.0, 1.0, 0.0], atol=1e-9))
+
+        self.assertEqual(len(realized.by_tag('solar_panel')), 4)
+
+        self.assertGreater(port_outer.center[0], port_inner.center[0])
+        self.assertLess(star_outer.center[0], star_inner.center[0])
 
 
 if __name__ == '__main__':

@@ -21,49 +21,58 @@ Implemented now:
 - orbit geometry and Sun/eclipse geometry
 - attitude laws
 - finite-rate mode-switch slews
+- body-fixed `CubeSat` geometry layer
 - Earth-disk quadrature
 - face-level directional masking
 - patch-resolved rectangular radiator panels
 - simple local recessed-wall geometry
 - legacy scalar flat-plate models retained under `geometry.legacy`
 
+## Recent Update
+
+The latest repo update did three structural things:
+- moved the old scalar flat-plate model into `geometry.legacy`
+- split finite-rate slew logic into `geometry/transitions.py`
+- added a new `geometry/CubeSat/` layer with a default 6U double-deployable example
+
+The default CubeSat example is:
+- a 6U bus
+- six body faces
+- two double-leaf deployable solar-panel wings
+- hinged along the top-edge 3U rail
+- realized in the body frame from a small set of deployment angles
+
 Planned next:
-- a body-fixed spacecraft geometry builder/layer
-- deployable solar-panel geometry
+- local occlusion against deployable solar panels and bus surfaces
 - spacecraft local occlusion in the view-factor layer
 - surface-to-surface geometric exchange products
 - cleaner handoff into a separate thermal layer
 
 ## Repo Layout
 
-Current repository layout for the new repo should be:
+Current repository layout:
 
 ```text
 GeometryPropagator/
-├── README.md
-├── pyproject.toml
-├── .gitignore
-├── geometry/
-│   ├── __init__.py
-│   ├── constants.py
-│   ├── sampling.py
-│   ├── orbit.py
-│   ├── so3.py
-│   ├── laws.py
-│   ├── transitions.py
-│   ├── earthdisk.py
-│   ├── panel.py
-│   ├── propagator.py
-│   └── legacy/
-│       ├── __init__.py
-│       └── scalar.py
-├── tests/
-│   ├── __init__.py
-│   └── test_geometry_package.py
-├── docs/
-│   ├── ARCHITECTURE.md
-│   └── ROADMAP.md
-└── run_geometry.ipynb
+- README.md
+- pyproject.toml
+- .gitignore
+- geometry/
+  - __init__.py
+  - constants.py
+  - sampling.py
+  - orbit.py
+  - so3.py
+  - laws.py
+  - transitions.py
+  - CubeSat/
+  - earthdisk.py
+  - panel.py
+  - propagator.py
+  - legacy/
+- tests/
+- docs/
+- run_geometry.ipynb
 ```
 
 ## Layer Boundaries
@@ -76,6 +85,7 @@ Examples:
 - patch definitions
 - deployables
 - local occluder geometry
+- default 6U double-deployable CubeSat examples
 
 ### 2. View-Factor Layer
 Owns only geometric visibility and exchange.
@@ -98,6 +108,48 @@ Examples:
 - reradiation / node balance / temperature solve
 
 This separation is deliberate. It keeps the geometry engine reusable and keeps the thermal layer from taking over the repo structure.
+
+## How It Works
+
+Briefly, the current flow is:
+
+1. Build body-fixed geometry.
+2. Realize that geometry for a mechanism state.
+3. Propagate orbit and attitude.
+4. Evaluate geometric visibility / Earth loading.
+5. Hand those geometric products to a separate thermal layer later.
+
+Minimal example:
+
+```python
+import math
+from datetime import datetime
+
+from geometry import (
+    Orbit,
+    TargetTracking,
+    build_6u_double_deployable,
+)
+
+cubesat = build_6u_double_deployable()
+realized = cubesat.realize({
+    'wing_port_inner_angle': math.pi / 2,
+    'wing_port_outer_angle': math.pi,
+    'wing_starboard_inner_angle': -math.pi / 2,
+    'wing_starboard_outer_angle': -math.pi,
+})
+
+orbit = Orbit.from_epoch(
+    a=6771e3,
+    i=math.radians(51.6),
+    omega=math.radians(30.0),
+    epoch=datetime(2025, 6, 21, 12, 0, 0),
+)
+
+law = TargetTracking(math.radians(266.4168), math.radians(-29.0078))
+```
+
+Right now, the `CubeSat` layer gives the view-factor engine a clean geometry object to consume next. The current Earth-disk and panel propagators already exist; the next step is to let them ray-test against the realized CubeSat surfaces for local occlusion.
 
 ## Quick Start
 

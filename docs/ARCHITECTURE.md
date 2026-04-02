@@ -101,6 +101,11 @@ Outputs:
   - finite-rate attitude wrappers
   - current example: `SlewModeSwitch`
 
+- `geometry/CubeSat/`
+  - body-fixed CubeSat surfaces
+  - hierarchical hinge realizations
+  - default 6U double-deployable builder
+
 - `geometry/earthdisk.py`
   - Earth-disk quadrature
   - face-coordinate transforms
@@ -123,26 +128,23 @@ Outputs:
 - `geometry/legacy/scalar.py`
   - old infinitesimal flat-plate scalar model
 
-## Next Geometry Layer
+## CubeSat Geometry Layer
 
-The next structural addition should be a minimal spacecraft geometry builder.
+The first dedicated geometry-builder package is now `geometry/CubeSat/`.
 
 Recommended package direction:
 
 ```text
 geometry/
-  spacecraft/
+  CubeSat/
     __init__.py
     surfaces.py
-    assemblies.py
     builder.py
-    realize.py
-    rays.py
 ```
 
 Minimal concepts:
 
-- `Surface`
+- `RectSurface`
   - name
   - parent frame
   - center
@@ -152,15 +154,18 @@ Minimal concepts:
   - one-sided / two-sided
   - patch grid metadata
 
-- `HingedSurface` or `HingedAssembly`
+- `SurfaceNode`
   - hinge origin
   - hinge axis
   - deployment angle
-  - child surfaces
+  - optional parent surface
 
-- `SpacecraftGeometry`
+- `CubeSatGeometry`
   - collection of surfaces and assemblies
   - realized body-frame geometry at a given mechanism state
+
+The default example is a 6U bus with two double-leaf deployable solar-panel
+wings mounted along the top-edge 3U rail.
 
 ## Interface Direction
 
