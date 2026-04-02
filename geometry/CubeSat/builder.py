@@ -11,7 +11,9 @@ def build_6u_double_deployable(*,
                                bus_x=0.100,
                                bus_y=0.2263,
                                bus_z=0.3405,
-                               wing_span=0.100,
+                               leaf_y=None,
+                               leaf_z=None,
+                               wing_span=None,
                                wing_length=None,
                                bus_patch_shape=None,
                                wing_patch_shape=None):
@@ -19,8 +21,17 @@ def build_6u_double_deployable(*,
 
     The default example is a 6U bus with one two-leaf wing on each side,
     attached along the top-edge 3U rail and deployed into a common plane.
+    Each leaf is sized explicitly in body-frame `y x z` dimensions.
     """
-    wing_length = bus_z if wing_length is None else wing_length
+    if leaf_y is None:
+        leaf_y = bus_y if wing_span is None else wing_span
+    elif wing_span is not None and not math.isclose(leaf_y, wing_span, abs_tol=1e-12):
+        raise ValueError("leaf_y and wing_span disagree")
+
+    if leaf_z is None:
+        leaf_z = bus_z if wing_length is None else wing_length
+    elif wing_length is not None and not math.isclose(leaf_z, wing_length, abs_tol=1e-12):
+        raise ValueError("leaf_z and wing_length disagree")
 
     nodes = []
 
@@ -103,11 +114,11 @@ def build_6u_double_deployable(*,
     nodes.append(SurfaceNode(
         surface=RectSurface(
             name='wing_port_inner',
-            center=np.array([0.5 * bus_x, 0.5 * bus_y - 0.5 * wing_span, 0.0]),
+            center=np.array([0.5 * bus_x, 0.5 * bus_y - 0.5 * leaf_y, 0.0]),
             normal=np.array([1.0, 0.0, 0.0]),
             u_axis=np.array([0.0, 0.0, 1.0]),
-            width=wing_length,
-            height=wing_span,
+            width=leaf_z,
+            height=leaf_y,
             patch_shape=wing_patch_shape,
             tags=('deployable', 'solar_panel', 'port', 'inner'),
         ),
@@ -124,13 +135,13 @@ def build_6u_double_deployable(*,
             center=np.array([0.0, 0.0, 0.0]),
             normal=np.array([0.0, 0.0, -1.0]),
             u_axis=np.array([1.0, 0.0, 0.0]),
-            width=wing_length,
-            height=wing_span,
+            width=leaf_z,
+            height=leaf_y,
             patch_shape=wing_patch_shape,
             tags=('deployable', 'solar_panel', 'port', 'outer'),
         ),
         parent='wing_port_inner',
-        hinge_origin=np.array([0.0, 0.5 * wing_span, 0.0]),
+        hinge_origin=np.array([0.0, 0.5 * leaf_y, 0.0]),
         hinge_axis=np.array([1.0, 0.0, 0.0]),
         state_key='wing_port_outer_angle',
         default_angle=math.pi,
@@ -140,11 +151,11 @@ def build_6u_double_deployable(*,
     nodes.append(SurfaceNode(
         surface=RectSurface(
             name='wing_starboard_inner',
-            center=np.array([-0.5 * bus_x, 0.5 * bus_y - 0.5 * wing_span, 0.0]),
+            center=np.array([-0.5 * bus_x, 0.5 * bus_y - 0.5 * leaf_y, 0.0]),
             normal=np.array([-1.0, 0.0, 0.0]),
             u_axis=np.array([0.0, 0.0, 1.0]),
-            width=wing_length,
-            height=wing_span,
+            width=leaf_z,
+            height=leaf_y,
             patch_shape=wing_patch_shape,
             tags=('deployable', 'solar_panel', 'starboard', 'inner'),
         ),
@@ -160,13 +171,13 @@ def build_6u_double_deployable(*,
             center=np.array([0.0, 0.0, 0.0]),
             normal=np.array([0.0, 0.0, -1.0]),
             u_axis=np.array([1.0, 0.0, 0.0]),
-            width=wing_length,
-            height=wing_span,
+            width=leaf_z,
+            height=leaf_y,
             patch_shape=wing_patch_shape,
             tags=('deployable', 'solar_panel', 'starboard', 'outer'),
         ),
         parent='wing_starboard_inner',
-        hinge_origin=np.array([0.0, -0.5 * wing_span, 0.0]),
+        hinge_origin=np.array([0.0, -0.5 * leaf_y, 0.0]),
         hinge_axis=np.array([1.0, 0.0, 0.0]),
         state_key='wing_starboard_outer_angle',
         default_angle=-math.pi,
@@ -177,7 +188,10 @@ def build_6u_double_deployable(*,
         metadata={
             'example': '6U_double_deployable',
             'bus_dimensions_m': (bus_x, bus_y, bus_z),
-            'wing_span_m': wing_span,
-            'wing_length_m': wing_length,
+            'leaf_y_m': leaf_y,
+            'leaf_z_m': leaf_z,
+            'leaf_dimensions_m': (leaf_y, leaf_z),
+            'wing_span_m': leaf_y,
+            'wing_length_m': leaf_z,
         },
     )

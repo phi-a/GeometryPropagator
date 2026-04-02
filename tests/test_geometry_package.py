@@ -83,10 +83,25 @@ class GeometryPackageTests(unittest.TestCase):
         self.assertTrue(np.allclose(star_inner.normal, [0.0, 1.0, 0.0], atol=1e-9))
         self.assertTrue(np.allclose(star_outer.normal, [0.0, 1.0, 0.0], atol=1e-9))
 
+        self.assertAlmostEqual(cubesat.metadata['leaf_y_m'], 0.2263)
+        self.assertAlmostEqual(cubesat.metadata['leaf_z_m'], 0.3405)
+        self.assertAlmostEqual(port_inner.height, 0.2263)
+        self.assertAlmostEqual(port_inner.width, 0.3405)
+
         self.assertEqual(len(realized.by_tag('solar_panel')), 4)
 
         self.assertGreater(port_outer.center[0], port_inner.center[0])
         self.assertLess(star_outer.center[0], star_inner.center[0])
+
+    def test_builder_accepts_explicit_leaf_dimensions(self):
+        cubesat = build_6u_double_deployable(leaf_y=0.180, leaf_z=0.300)
+        realized = cubesat.realize()
+        port_inner = realized.by_name('wing_port_inner')
+
+        self.assertAlmostEqual(cubesat.metadata['leaf_y_m'], 0.180)
+        self.assertAlmostEqual(cubesat.metadata['leaf_z_m'], 0.300)
+        self.assertAlmostEqual(port_inner.height, 0.180)
+        self.assertAlmostEqual(port_inner.width, 0.300)
 
 
 if __name__ == '__main__':

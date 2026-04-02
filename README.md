@@ -41,6 +41,7 @@ The default CubeSat example is:
 - two double-leaf deployable solar-panel wings
 - hinged along the top-edge 3U rail
 - realized in the body frame from a small set of deployment angles
+- each panel leaf defaults to the full 6U side-panel `y x z` dimensions
 
 Planned next:
 - local occlusion against deployable solar panels and bus surfaces
@@ -147,6 +148,15 @@ orbit = Orbit.from_epoch(
 )
 
 law = TargetTracking(math.radians(266.4168), math.radians(-29.0078))
+```
+
+To change the deployable panel size, pass explicit leaf dimensions:
+
+```python
+cubesat = build_6u_double_deployable(
+    leaf_y=0.2263,
+    leaf_z=0.3405,
+)
 ```
 
 Right now, the `CubeSat` layer gives the view-factor engine a clean geometry object to consume next. The current Earth-disk and panel propagators already exist; the next step is to let them ray-test against the realized CubeSat surfaces for local occlusion.
