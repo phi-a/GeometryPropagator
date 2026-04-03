@@ -19,6 +19,18 @@ def _unit(v):
     return arr / n
 
 
+def _as_rotation_matrix(rotation):
+    if rotation is None:
+        return np.eye(3)
+    if hasattr(rotation, 'm'):
+        matrix = np.asarray(rotation.m, dtype=float)
+    else:
+        matrix = np.asarray(rotation, dtype=float)
+    if matrix.shape != (3, 3):
+        raise ValueError("rotation must be a 3x3 matrix or an SO3-like object")
+    return matrix
+
+
 def _rotation_about_axis(axis, angle):
     axis = _unit(axis)
     x, y, z = axis
@@ -210,6 +222,35 @@ class RealizedGeometry:
     def by_tag(self, tag):
         return tuple(surface for surface in self.surfaces if tag in surface.tags)
 
+    def mounted(self, *, rotation=None, offset=None):
+        """Return a rigidly transformed copy of the realized geometry.
+
+        This is intended as an optional geometry-frame -> body-frame mount
+        step. When both arguments are omitted, the geometry is returned
+        unchanged.
+        """
+        rot = _as_rotation_matrix(rotation)
+        shift = np.zeros(3, dtype=float) if offset is None else _as_vec3(offset)
+        if np.allclose(rot, np.eye(3)) and np.allclose(shift, 0.0):
+            return self
+
+        transformed = []
+        for surface in self.surfaces:
+            transformed.append(
+                RectSurface(
+                    name=surface.name,
+                    center=shift + rot @ surface.center,
+                    normal=rot @ surface.normal,
+                    u_axis=rot @ surface.u_axis,
+                    width=surface.width,
+                    height=surface.height,
+                    two_sided=surface.two_sided,
+                    patch_shape=surface.patch_shape,
+                    tags=surface.tags,
+                )
+            )
+        return RealizedGeometry(tuple(transformed))
+
     def first_intersection(self, origin, direction, *, exclude=()):
         """Return `(surface, t)` for the nearest intersected surface, if any."""
         blocked = set(exclude)
@@ -254,8 +295,13 @@ class CubeSatGeometry:
                 state[node.state_key] = node.default_angle
         return state
 
-    def realize(self, state=None):
-        """Realize all surfaces in the body frame for the given mechanism state."""
+    def realize(self, state=None, *, mount_rotation=None, mount_offset=None):
+        """Realize all surfaces for the given mechanism state.
+
+        By default the geometry is realized directly in the body frame.
+        Optionally, apply one rigid geometry-frame -> body-frame mount
+        transform through `mount_rotation` and `mount_offset`.
+        """
         if state is None:
             state = {}
         state = {**self.default_state(), **state}
@@ -304,4 +350,5 @@ class CubeSatGeometry:
             return cache[name]
 
         realized_surfaces = tuple(resolve(node.surface.name)[0] for node in self.nodes)
-        return RealizedGeometry(realized_surfaces)
+        realized = RealizedGeometry(realized_surfaces)
+        return realized.mounted(rotation=mount_rotation, offset=mount_offset)

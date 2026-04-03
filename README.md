@@ -7,6 +7,8 @@ The current focus is geometric truth:
 - attitude laws and finite-rate slew transitions
 - Earth-disk integration instead of scalar `cos(alpha)` approximations
 - panel-resolved radiator loading with local masking and recessed geometry
+- body-fixed spacecraft geometry with deployable mechanisms
+- spacecraft self-occlusion as a geometric visibility product
 
 The package is intentionally being organized so that:
 - **geometry** defines spacecraft shape and kinematics
@@ -22,32 +24,48 @@ Implemented now:
 - attitude laws
 - finite-rate mode-switch slews
 - body-fixed `CubeSat` geometry layer
+- hierarchical deployable-panel realization from hinge states
+- optional rigid geometry-frame -> body-frame mount transform
+- nearest-hit ray queries against realized spacecraft surfaces
+- patch-by-ray spacecraft self-occlusion masks
+- patch-resolved directional integration with spacecraft blockage applied
 - Earth-disk quadrature
 - face-level directional masking
 - patch-resolved rectangular radiator panels
 - simple local recessed-wall geometry
+- notebook demos for radiator geometry and spacecraft geometry
 - legacy scalar flat-plate models retained under `geometry.legacy`
 
-## Recent Update
+## Recent Progress
 
-The latest repo update did three structural things:
-- moved the old scalar flat-plate model into `geometry.legacy`
-- split finite-rate slew logic into `geometry/transitions.py`
-- added a new `geometry/CubeSat/` layer with a default 6U double-deployable example
+The current repo state is beyond the first `CubeSat` builder milestone. It now has:
+- the old scalar flat-plate model moved into `geometry.legacy`
+- finite-rate slew logic split into `geometry/transitions.py`
+- a dedicated `geometry/CubeSat/` layer with a default 6U double-deployable example
+- a reusable `geometry/occlusion.py` bridge for spacecraft self-obstruction
+- `run_spacecraft_geometry.ipynb` as the active spacecraft-geometry demo notebook
 
 The default CubeSat example is:
 - a 6U bus
 - six body faces
 - two double-leaf deployable solar-panel wings
 - hinged along the top-edge 3U rail
-- realized in the body frame from a small set of deployment angles
+- realized from a small set of deployment angles
+- optionally mounted into the body frame with one rigid transform
 - each panel leaf defaults to the full 6U side-panel `y x z` dimensions
 
-Planned next:
-- local occlusion against deployable solar panels and bus surfaces
-- spacecraft local occlusion in the view-factor layer
-- surface-to-surface geometric exchange products
-- cleaner handoff into a separate thermal layer
+What the repo can do today:
+- build and realize spacecraft geometry for default or custom deployment states
+- keep geometry, mount, and attitude as separate concepts
+- query first-hit intersections on realized surfaces
+- compute self-occlusion maps for a chosen face or panel patch grid
+- visualize direction-space blockage and face-space blockage in the notebook
+
+What is still remaining:
+- feed spacecraft self-occlusion directly into the active Earth-disk loading path
+- combine local panel recess masking with global spacecraft self-obstruction in one propagator
+- add geometric exchange products beyond Earth view, including patch-to-patch visibility
+- keep the thermal layer downstream instead of letting it drive the geometry design
 
 ## Repo Layout
 
@@ -74,6 +92,7 @@ GeometryPropagator/
 - tests/
 - docs/
 - run_geometry.ipynb
+- run_spacecraft_geometry.ipynb
 ```
 
 ## Layer Boundaries
@@ -128,6 +147,7 @@ from datetime import datetime
 
 from geometry import (
     Orbit,
+    SO3,
     TargetTracking,
     build_6u_double_deployable,
 )
@@ -139,6 +159,11 @@ realized = cubesat.realize({
     'wing_starboard_inner_angle': -math.pi / 2,
     'wing_starboard_outer_angle': -math.pi,
 })
+
+realized_mounted = cubesat.realize(
+    mount_rotation=SO3.Rz(math.radians(90.0)),
+    mount_offset=[0.0, 0.1, 0.0],
+)
 
 orbit = Orbit.from_epoch(
     a=6771e3,
@@ -161,6 +186,11 @@ cubesat = build_6u_double_deployable(
 
 Right now, the `CubeSat` layer gives the view-factor engine a clean geometry object to consume next. The current Earth-disk and panel propagators already exist; the next step is to let them ray-test against the realized CubeSat surfaces for local occlusion.
 
+The important frame split is:
+- geometry state: surface layout and hinge angles
+- mount state: how the geometry is attached to the body axes
+- attitude state: how the body frame is oriented in LVLH or ECI
+
 ## Quick Start
 
 Run the smoke tests:
@@ -174,6 +204,18 @@ Use the notebook:
 ```bash
 jupyter notebook run_geometry.ipynb
 ```
+
+Use the spacecraft geometry / local-occlusion demo notebook:
+
+```bash
+jupyter notebook run_spacecraft_geometry.ipynb
+```
+
+The current notebook flow is:
+- view the default deployed geometry
+- view one custom deployment state for intuition
+- run ray and self-occlusion diagnostics on the default deployment
+- inspect both direction-space and face-space blockage plots
 
 ## Legacy Models
 

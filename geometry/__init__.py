@@ -25,6 +25,8 @@ from .CubeSat import (CubeSatGeometry, RealizedGeometry, RectSurface,  # noqa: F
 from .earthdisk import (EarthDiskQuadrature, EarthDiskSamples,         # noqa: F401
                         FACE_LOCAL_FRAMES, AzimuthElevationMask)        # noqa: F401
 from .panel import RectangularPanel, PanelLoadingProfile               # noqa: F401
+from .occlusion import (spacecraft_occlusion_mask,                    # noqa: F401
+                        integrate_surface_response)
 from .propagator import (earth_loading_propagate, EarthLoadingProfile,  # noqa: F401
                          panel_loading_propagate)
 from .legacy import (earth_vf, propagate, thermal_propagate,           # noqa: F401
