@@ -1,73 +1,43 @@
 # GeometryPropagator
 
-GeometryPropagator is a spacecraft-facing geometry and view-factor engine for orbit-driven thermal analysis.
+GeometryPropagator is a spacecraft-facing geometry, visibility, and thermal-prep engine for orbit-driven thermal analysis.
 
 The current focus is geometric truth:
-- orbit geometry in ECI/LVLH
-- attitude laws and finite-rate slew transitions
+- orbit geometry in ECI and LVLH
+- steady-state attitude laws and finite-rate slew transitions
+- body-fixed CubeSat geometry with deployable mechanisms
 - Earth-disk integration instead of scalar `cos(alpha)` approximations
-- panel-resolved radiator loading with local masking and recessed geometry
-- body-fixed spacecraft geometry with deployable mechanisms
-- spacecraft self-occlusion as a geometric visibility product
+- patch-resolved spacecraft self-occlusion
+- clean handoff from realized geometry to downstream view-factor and thermal consumers
 
-The package is intentionally being organized so that:
-- **geometry** defines spacecraft shape and kinematics
-- **view factor** computes who can see whom, and by how much
-- **thermal** consumes those geometric products later
+The package is intentionally split so that:
+- `geometry` defines orbit, attitude, and spacecraft shape
+- `viewfactor` computes what each realized surface patch can see
+- `thermal` converts those geometric products into background heat inputs
 
-The thermal solver is not the center of this repository. This repository should become the geometry and visibility kernel that a thermal planner can call.
+The thermal solver is not the center of this repository. This repository is the geometry and visibility kernel that a planner or thermal balance layer can call.
 
 ## Current Status
 
 Implemented now:
 - orbit geometry and Sun/eclipse geometry
-- attitude laws
+- steady-state attitude laws
 - finite-rate mode-switch slews
-- body-fixed `CubeSat` geometry layer
+- body-fixed `CubeSat` geometry builders
 - hierarchical deployable-panel realization from hinge states
-- optional rigid geometry-frame -> body-frame mount transform
+- optional rigid geometry-frame -> body-frame mount transforms
+- `mount(...)` helper for self-documenting axis-to-axis mounting
 - stable surface identities preserved through realization and mount
+- `RealizedGeometry` JSON export/import with provenance metadata
 - nearest-hit ray queries against realized spacecraft surfaces
 - patch-by-ray spacecraft self-occlusion masks
 - patch-resolved directional integration with spacecraft blockage applied
 - Earth-disk quadrature
 - face-level directional masking
 - patch-resolved rectangular radiator panels
-- simple local recessed-wall geometry
-- notebook demos for radiator geometry and spacecraft geometry
+- thermal background consumers built on top of geometric view products
+- notebook demos for geometry realization and body-face loading analysis
 - legacy scalar flat-plate models retained under `geometry.legacy`
-
-## Recent Progress
-
-The current repo state is beyond the first `CubeSat` builder milestone. It now has:
-- the old scalar flat-plate model moved into `geometry.legacy`
-- finite-rate slew logic split into `geometry/transitions.py`
-- a dedicated `geometry/CubeSat/` layer with a default 6U double-deployable example
-- a reusable `geometry/occlusion.py` bridge for spacecraft self-obstruction
-- `run_spacecraft_geometry.ipynb` as the active spacecraft-geometry demo notebook
-
-The default CubeSat example is:
-- a 6U bus
-- six body faces
-- two double-leaf deployable solar-panel wings
-- hinged along the top-edge 3U rail
-- realized from a small set of deployment angles
-- optionally mounted into the body frame with one rigid transform
-- each panel leaf defaults to the full 6U side-panel `y x z` dimensions
-
-What the repo can do today:
-- build and realize spacecraft geometry for default or custom deployment states
-- keep geometry, mount, and attitude as separate concepts
-- interpret mounted faces by current body-frame normal instead of relying on legacy geometry names
-- query first-hit intersections on realized surfaces
-- compute self-occlusion maps for a chosen face or panel patch grid
-- visualize direction-space blockage and face-space blockage in the notebook
-
-What is still remaining:
-- feed spacecraft self-occlusion directly into the active Earth-disk loading path
-- combine local panel recess masking with global spacecraft self-obstruction in one propagator
-- add geometric exchange products beyond Earth view, including patch-to-patch visibility
-- keep the thermal layer downstream instead of letting it drive the geometry design
 
 ## Repo Layout
 
@@ -81,91 +51,122 @@ GeometryPropagator/
 - geometry/
   - __init__.py
   - constants.py
-  - sampling.py
   - orbit.py
   - so3.py
   - laws.py
   - transitions.py
+  - sampling.py
   - CubeSat/
+  - legacy/
+- viewfactor/
+  - __init__.py
   - earthdisk.py
   - panel.py
+  - occlusion.py
   - propagator.py
-  - legacy/
+  - plots.py
+- thermal/
+  - __init__.py
+  - background.py
 - tests/
 - docs/
 - run_geometry.ipynb
-- run_spacecraft_geometry.ipynb
+- run_cubesat_geometry.ipynb
+- background.ipynb
 ```
 
 ## Layer Boundaries
 
 ### 1. Geometry Layer
-Owns only spacecraft shape and mechanism state.
+Owns spacecraft shape, mechanism state, orbit, and attitude laws.
 
 Examples:
 - body-fixed surfaces
-- patch definitions
-- deployables
-- local occluder geometry
-- default 6U double-deployable CubeSat examples
+- hinge trees and deployables
+- mount transforms
+- realized body-frame surfaces
+- orbit and attitude state generation
 
 ### 2. View-Factor Layer
-Owns only geometric visibility and exchange.
+Owns geometric visibility and exchange only.
 
 Examples:
 - Earth view factor
+- solar-panel view
+- other-structure view
 - deep-space visibility
-- local masking/occlusion
-- patch-to-patch geometric exchange factors
+- spacecraft self-occlusion
 
-Outputs from this layer should be geometric products, not thermal loads.
+Outputs from this layer are geometric products, not watts.
 
 ### 3. Thermal Layer
-Consumes view factors and radiance/source models.
+Consumes view-factor outputs and source models.
 
 Examples:
-- Earth IR loading
-- albedo loading
-- solar loading
-- reradiation / node balance / temperature solve
+- Earth IR background
+- albedo background
+- solar background
+- combined radiative background products for later thermal use
 
-This separation is deliberate. It keeps the geometry engine reusable and keeps the thermal layer from taking over the repo structure.
+## Realized Geometry Handoff
 
-## How It Works
+The active interface boundary is `RealizedGeometry`.
 
-Briefly, the current flow is:
-
+Builder-side workflow:
 1. Build body-fixed geometry.
-2. Realize that geometry for a mechanism state.
-3. Propagate orbit and attitude.
-4. Evaluate geometric visibility / Earth loading.
-5. Hand those geometric products to a separate thermal layer later.
+2. Realize that geometry for one mechanism state.
+3. Apply one body-frame mount transform.
+4. Save the flat realized surface set to JSON.
 
-Minimal example:
+Analysis-side workflow:
+1. Load the saved `RealizedGeometry` JSON.
+2. Select analysis surfaces by realized body-frame normal.
+3. Propagate view factors from the loaded realized geometry.
+4. Convert those geometric products into thermal background inputs.
+
+This keeps the builder complexity upstream. Downstream code consumes a flat list of body-frame surfaces only.
+
+Important interpretation rules:
+- surface names such as `bus_+X` are stable geometry identities and are not renamed after mounting
+- mounted body roles such as `body +Y bus face` should be selected from the realized geometry by the current face normal
+- local patch plots use the realized surface frame: `center`, `normal`, `u_axis`, and the derived in-plane `v` direction
+
+## Minimal Example
 
 ```python
 import math
 from datetime import datetime
+from pathlib import Path
 
 from geometry import (
     Orbit,
-    SO3,
+    RealizedGeometry,
+    SlewModeSwitch,
+    SunTracking,
     TargetTracking,
     build_6u_double_deployable,
+    mount,
+)
+from geometry.CubeSat.inspect import surface_by_normal
+from thermal import radiative_background
+from viewfactor import surface_loading_propagate
+
+builder = build_6u_double_deployable()
+
+realized = builder.realize(
+    mechanism_state={
+        'wing_port_inner_angle': math.pi / 2,
+        'wing_port_outer_angle': math.pi,
+        'wing_starboard_inner_angle': -math.pi / 2,
+        'wing_starboard_outer_angle': -math.pi,
+    },
+    mount_rotation=mount('+Y', '+Z', '+Z', '+X'),
 )
 
-cubesat = build_6u_double_deployable()
-realized = cubesat.realize({
-    'wing_port_inner_angle': math.pi / 2,
-    'wing_port_outer_angle': math.pi,
-    'wing_starboard_inner_angle': -math.pi / 2,
-    'wing_starboard_outer_angle': -math.pi,
-})
+realized.to_json(Path('outputs') / 'spacecraft.json')
 
-realized_mounted = cubesat.realize(
-    mount_rotation=SO3.Rz(math.radians(90.0)),
-    mount_offset=[0.0, 0.1, 0.0],
-)
+loaded = RealizedGeometry.from_json(Path('outputs') / 'spacecraft.json')
+plus_y_face = surface_by_normal(loaded, [0.0, 1.0, 0.0], tag='bus')
 
 orbit = Orbit.from_epoch(
     a=6771e3,
@@ -174,35 +175,37 @@ orbit = Orbit.from_epoch(
     epoch=datetime(2025, 6, 21, 12, 0, 0),
 )
 
-law = TargetTracking(math.radians(266.4168), math.radians(-29.0078))
-```
+law = SlewModeSwitch(
+    TargetTracking(math.radians(266.4168), math.radians(-29.0078)),
+    SunTracking(),
+    slew_rate_deg_s=0.5,
+)
 
-To change the deployable panel size, pass explicit leaf dimensions:
-
-```python
-cubesat = build_6u_double_deployable(
-    leaf_y=0.2263,
-    leaf_z=0.3405,
+profile = surface_loading_propagate(loaded, plus_y_face.name, orbit, law)
+background = radiative_background(
+    profile,
+    solar_panel_temperature_K=300.0,
+    solar_panel_emittance=0.9,
 )
 ```
 
-Right now, the `CubeSat` layer gives the view-factor engine a clean geometry object to consume next. The current Earth-disk and panel propagators already exist; the next step is to let them ray-test against the realized CubeSat surfaces for local occlusion.
+## Notebook Workflow
 
-The important frame split is:
-- geometry state: surface layout and hinge angles
-- mount state: how the geometry is attached to the body axes
-- attitude state: how the body frame is oriented in LVLH or ECI
+`run_cubesat_geometry.ipynb`
+- build the default 6U double-deployable geometry
+- choose mechanism state and body mount with `mount(...)`
+- inspect the mounted role table and 3D geometry with body axes
+- save `outputs/spacecraft.json`
 
-Two interpretation rules matter in the current notebook:
-- surface names such as `bus_+X` are stable geometry identities and are **not** renamed after a mount rotation
-- analysis-facing roles such as `body +Y bus face` should be selected from the mounted geometry by the current face normal
+`background.ipynb`
+- load `outputs/spacecraft.json`
+- resolve body-role faces by realized normal
+- run `surface_loading_propagate(...)`
+- inspect Earth-only view, solar-panel view, and total background
+- animate the orbit progression sample-by-sample at `24 fps`
 
-Local face plots use a surface-centered frame:
-- origin: the surface center
-- `u`, `v`: in-plane coordinates on that face
-- `normal`: the outward face direction at the same origin
-
-So the patch view is a face-local map, not a raw `x-y-z` slice. After a mount, `u` and `v` may point along different body axes than the original builder labels.
+`run_geometry.ipynb`
+- retain the simpler flat-plate / geometry sandbox workflow
 
 ## Quick Start
 
@@ -212,25 +215,17 @@ Run the smoke tests:
 python -m unittest tests.test_geometry_package
 ```
 
-Use the notebook:
+Open the geometry notebook:
 
 ```bash
-jupyter notebook run_geometry.ipynb
+jupyter notebook run_cubesat_geometry.ipynb
 ```
 
-Use the spacecraft geometry / local-occlusion demo notebook:
+Open the background notebook:
 
 ```bash
-jupyter notebook run_spacecraft_geometry.ipynb
+jupyter notebook background.ipynb
 ```
-
-The current notebook flow is:
-- view the default deployed geometry
-- inspect the default surface summary table and default 3D geometry
-- apply one mounted body-frame mapping for the active demo case
-- inspect the mounted role table: surface name, mounted normal, `+u`, `+v`, center, and tags
-- run ray and self-occlusion diagnostics on the mounted `body +Y` bus face
-- inspect both direction-space and face-space blockage plots with local `u,v,normal` labels
 
 ## Legacy Models
 

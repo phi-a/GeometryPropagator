@@ -1,9 +1,26 @@
 """Minimal CubeSat geometry layer built from rectangular surfaces."""
 
+import json
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
+
+from ..so3 import SO3
+
+
+BODY_FRAME_LABEL = "+X=velocity, +Y=orbit_normal, +Z=zenith"
+
+_AXIS_MAP = (
+    ('+X', np.array([1.0, 0.0, 0.0])),
+    ('-X', np.array([-1.0, 0.0, 0.0])),
+    ('+Y', np.array([0.0, 1.0, 0.0])),
+    ('-Y', np.array([0.0, -1.0, 0.0])),
+    ('+Z', np.array([0.0, 0.0, 1.0])),
+    ('-Z', np.array([0.0, 0.0, -1.0])),
+)
+_AXIS_LOOKUP = {label: axis for label, axis in _AXIS_MAP}
 
 
 def _as_vec3(v):
@@ -31,6 +48,24 @@ def _as_rotation_matrix(rotation):
     return matrix
 
 
+def _jsonify(value):
+    if isinstance(value, dict):
+        return {str(key): _jsonify(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonify(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return _jsonify(value.tolist())
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
+
+
+def _axis_vector_from_label(label):
+    if label not in _AXIS_LOOKUP:
+        raise ValueError(f"axis label must be one of {tuple(_AXIS_LOOKUP)}")
+    return _AXIS_LOOKUP[label].copy()
+
+
 def _rotation_about_axis(axis, angle):
     axis = _unit(axis)
     x, y, z = axis
@@ -47,6 +82,118 @@ def _rotation_about_axis(axis, angle):
 def _rotate_point_about_line(point, origin, axis, angle):
     rot = _rotation_about_axis(axis, angle)
     return _as_vec3(origin) + rot @ (_as_vec3(point) - _as_vec3(origin))
+
+
+def _canonical_perpendicular_axis(axis):
+    axis = _unit(axis)
+    for candidate in (
+        np.array([1.0, 0.0, 0.0]),
+        np.array([0.0, 1.0, 0.0]),
+        np.array([0.0, 0.0, 1.0]),
+    ):
+        perp = candidate - np.dot(candidate, axis) * axis
+        if np.linalg.norm(perp) > 1e-12:
+            return _unit(perp)
+    raise ValueError("failed to choose a perpendicular axis")
+
+
+def _minimal_axis_alignment(source_axis, target_axis):
+    source_axis = _unit(source_axis)
+    target_axis = _unit(target_axis)
+    dot = float(np.clip(np.dot(source_axis, target_axis), -1.0, 1.0))
+    if dot >= 1.0 - 1e-12:
+        return np.eye(3)
+    if dot <= -1.0 + 1e-12:
+        return _rotation_about_axis(_canonical_perpendicular_axis(source_axis), math.pi)
+
+    cross = np.cross(source_axis, target_axis)
+    angle = math.atan2(np.linalg.norm(cross), dot)
+    return _rotation_about_axis(cross, angle)
+
+
+def mount(geom_axis, body_axis, geom_axis2=None, body_axis2=None):
+    """Return a rigid geometry-frame -> body-frame alignment rotation.
+
+    Parameters
+    ----------
+    geom_axis, body_axis : {'+X', '-X', '+Y', '-Y', '+Z', '-Z'}
+        Primary axis mapping, enforced exactly.
+    geom_axis2, body_axis2 : {'+X', '-X', '+Y', '-Y', '+Z', '-Z'}, optional
+        Optional secondary axis mapping used to fully constrain the rotation.
+    """
+    source_primary = _axis_vector_from_label(geom_axis)
+    target_primary = _axis_vector_from_label(body_axis)
+
+    if (geom_axis2 is None) != (body_axis2 is None):
+        raise ValueError("geom_axis2 and body_axis2 must be provided together")
+
+    if geom_axis2 is None:
+        return SO3(_minimal_axis_alignment(source_primary, target_primary))
+
+    source_secondary = _axis_vector_from_label(geom_axis2)
+    target_secondary = _axis_vector_from_label(body_axis2)
+    if abs(np.dot(source_primary, source_secondary)) > 1e-12:
+        raise ValueError("geom_axis2 must be orthogonal to geom_axis")
+    if abs(np.dot(target_primary, target_secondary)) > 1e-12:
+        raise ValueError("body_axis2 must be orthogonal to body_axis")
+
+    source_basis = np.column_stack([
+        source_primary,
+        source_secondary,
+        np.cross(source_primary, source_secondary),
+    ])
+    target_basis = np.column_stack([
+        target_primary,
+        target_secondary,
+        np.cross(target_primary, target_secondary),
+    ])
+    rotation = target_basis @ source_basis.T
+    if not np.allclose(rotation @ source_primary, target_primary, atol=1e-12):
+        raise ValueError("failed to align the requested primary axis pair")
+    if not np.allclose(rotation @ source_secondary, target_secondary, atol=1e-12):
+        raise ValueError("failed to align the requested secondary axis pair")
+    return SO3(rotation)
+
+
+def _surface_to_dict(surface):
+    return {
+        'name': surface.name,
+        'center': _jsonify(surface.center),
+        'normal': _jsonify(surface.normal),
+        'u_axis': _jsonify(surface.u_axis),
+        'width': float(surface.width),
+        'height': float(surface.height),
+        'two_sided': bool(surface.two_sided),
+        'patch_shape': None if surface.patch_shape is None else list(surface.patch_shape),
+        'tags': list(surface.tags),
+    }
+
+
+def _surface_from_dict(data):
+    return RectSurface(
+        name=data['name'],
+        center=data['center'],
+        normal=data['normal'],
+        u_axis=data['u_axis'],
+        width=float(data['width']),
+        height=float(data['height']),
+        two_sided=bool(data.get('two_sided', False)),
+        patch_shape=None if data.get('patch_shape') is None else tuple(data['patch_shape']),
+        tags=tuple(data.get('tags', ())),
+    )
+
+
+def _compose_mount_metadata(metadata, rotation, offset):
+    combined = dict(metadata)
+    previous_rotation = _as_rotation_matrix(combined.get('mount_rotation'))
+    previous_offset = (
+        np.zeros(3, dtype=float)
+        if combined.get('mount_offset') is None
+        else _as_vec3(combined['mount_offset'])
+    )
+    combined['mount_rotation'] = _jsonify(rotation @ previous_rotation)
+    combined['mount_offset'] = _jsonify(offset + rotation @ previous_offset)
+    return combined
 
 
 @dataclass(frozen=True)
@@ -209,6 +356,11 @@ class SurfaceNode:
 class RealizedGeometry:
     """Realized body-frame geometry built from a `CubeSatGeometry`."""
     surfaces: tuple[RectSurface, ...]
+    metadata: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        object.__setattr__(self, 'surfaces', tuple(self.surfaces))
+        object.__setattr__(self, 'metadata', dict(self.metadata))
 
     def by_name(self, name):
         for surface in self.surfaces:
@@ -221,6 +373,23 @@ class RealizedGeometry:
 
     def by_tag(self, tag):
         return tuple(surface for surface in self.surfaces if tag in surface.tags)
+
+    def to_json(self, path):
+        """Write the realized geometry and provenance metadata to JSON."""
+        payload = dict(_jsonify(self.metadata))
+        payload['surfaces'] = [_surface_to_dict(surface) for surface in self.surfaces]
+
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding='utf-8')
+        return path
+
+    @classmethod
+    def from_json(cls, path):
+        """Load realized geometry and provenance metadata from JSON."""
+        payload = json.loads(Path(path).read_text(encoding='utf-8'))
+        surfaces = tuple(_surface_from_dict(item) for item in payload.pop('surfaces'))
+        return cls(surfaces=surfaces, metadata=payload)
 
     def mounted(self, *, rotation=None, offset=None):
         """Return a rigidly transformed copy of the realized geometry.
@@ -249,7 +418,8 @@ class RealizedGeometry:
                     tags=surface.tags,
                 )
             )
-        return RealizedGeometry(tuple(transformed))
+        metadata = _compose_mount_metadata(self.metadata, rot, shift)
+        return RealizedGeometry(tuple(transformed), metadata=metadata)
 
     def first_intersection(self, origin, direction, *, exclude=()):
         """Return `(surface, t)` for the nearest intersected surface, if any."""
@@ -305,6 +475,11 @@ class CubeSatGeometry:
         if state is None:
             state = {}
         state = {**self.default_state(), **state}
+        mechanism_state = {
+            node.state_key: float(state[node.state_key])
+            for node in self.nodes
+            if node.state_key is not None
+        }
         node_map = {node.surface.name: node for node in self.nodes}
         cache = {}
 
@@ -324,7 +499,7 @@ class CubeSatGeometry:
             u_local = node.surface.u_axis
 
             if node.hinge_axis is not None:
-                angle = float(state.get(node.state_key, node.default_angle))
+                angle = mechanism_state.get(node.state_key, node.default_angle)
                 center_local = _rotate_point_about_line(
                     center_local, node.hinge_origin, node.hinge_axis, angle
                 )
@@ -350,5 +525,15 @@ class CubeSatGeometry:
             return cache[name]
 
         realized_surfaces = tuple(resolve(node.surface.name)[0] for node in self.nodes)
-        realized = RealizedGeometry(realized_surfaces)
+        realized = RealizedGeometry(
+            realized_surfaces,
+            metadata={
+                'geometry_name': self.metadata.get('example'),
+                'body_frame': BODY_FRAME_LABEL,
+                'mechanism_state': _jsonify(mechanism_state),
+                'mount_rotation': _jsonify(np.eye(3)),
+                'mount_offset': _jsonify(np.zeros(3, dtype=float)),
+                'builder_metadata': _jsonify(self.metadata),
+            },
+        )
         return realized.mounted(rotation=mount_rotation, offset=mount_offset)

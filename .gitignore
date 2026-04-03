@@ -1,12 +1,19 @@
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+.claude/
+.vscode/
 
 output/
+outputs/
 plots/
+*.png
+*.json
 latex/build/
 
 *.log
 *.aux
 *.out
 *.toc
+*.synctex.gz
+*.spl

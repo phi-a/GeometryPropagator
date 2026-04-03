@@ -1,0 +1,824 @@
+\documentclass[preprint,12pt]{elsarticle}
+
+\journal{Acta Astronautica}
+
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\newcommand{\Rearth}{R_{\mathrm{E}}}
+\newcommand{\muearth}{\mu_{\mathrm{E}}}
+\newcommand{\Jtwo}{J_{2}}
+\newcommand{\wrapdist}{d_{\mathrm{wrap}}}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{proposition}[definition]{Proposition}
+\theoremstyle{remark}
+\newtheorem{remark}[definition]{Remark}
+
+\begin{document}
+
+\begin{frontmatter}
+
+\title{Geometry-Based Feasible Regions for Constraint-Driven CubeSat Operations: Closed-Form Observation Windows and Detector Optimization in DarkNESS}
+
+\author[inst1]{First Author\corref{cor1}}
+\ead{email@domain.edu}
+\author[inst2]{Second Author}
+
+\cortext[cor1]{Corresponding author}
+
+\affiliation[inst1]{organization={Institution 1},
+  addressline={Address line},
+  city={City},
+  state={State},
+  postcode={ZIP},
+  country={Country}}
+
+\affiliation[inst2]{organization={Institution 2},
+  addressline={Address line},
+  city={City},
+  state={State},
+  postcode={ZIP},
+  country={Country}}
+
+\begin{abstract}
+CubeSat operations are often implemented as timelines and rule sets that assume required conditions will hold when commanded actions occur.
+That assumption weakens for geometry-sensitive missions in which science depends on simultaneous satisfaction of eclipse, target visibility, detector timing, and subsystem margins.
+This paper develops a geometry-based feasible-region formulation in which science is permitted only while the spacecraft state lies inside a time-varying admissible operating set.
+For near-circular LEO astrophysics missions, the general formulation admits an orbital-phase reduction in which executable windows are connected components of analytically defined admissible arcs.
+We develop the deterministic core of that framework for the DarkNESS mission class, deriving closed-form expressions for eclipse, target-clear, and open-sky intervals and coupling them to shutterless Skipper-CCD timing to maximize signal-to-noise ratio through optimal selection of exposure time $B$ and sample count $N$.
+The result is a fast pass-level generator of feasible science windows and detector settings that also serves as a concrete special case of a broader constraint-driven operations architecture for resource-limited CubeSats.
+\end{abstract}
+
+\begin{keyword}
+CubeSat operations \sep feasible region \sep Low Earth orbit \sep eclipse \sep Earth occultation \sep Skipper-CCD \sep shutterless imaging \sep DarkNESS
+\end{keyword}
+
+\end{frontmatter}
+
+\section{Introduction}
+
+CubeSat operations are often represented as timelines, rule sets, and mission procedures that assume required conditions will hold when commanded actions occur.
+That assumption weakens when science depends on simultaneous satisfaction of eclipse, target visibility, Sun exclusion, attitude feasibility, detector readiness, and resource margins.
+For a geometry-sensitive mission, a pass that appears valid from visibility alone may still be unusable because the observation sequence does not fit inside the available window, the detector is not thermally ready, or the science return is inadequate.
+
+DarkNESS exposes one tractable and important special case of this broader problem.
+Small astrophysics missions in low Earth orbit must schedule science inside short windows limited by orbital geometry, and these windows vary with season and orbit-plane orientation through the relative motion of the Sun and the orbit plane.
+If the payload is shutterless and uses Skipper-CCD non-destructive sampling, then detector operation introduces an additional coupling between exposure time and readout time.
+This work formulates that combined geometry-plus-detector problem in closed form and optimizes signal-to-noise ratio with respect to exposure duration $B$ and samples per pixel $N$.
+
+The contribution is not a new eclipse test or a new detector noise model.
+The contribution is a unified analytical operations model that maps calendar date and orbit elements to optimal feasible detector settings, while situating the result inside a more general constraint-driven view of operations: science is permitted only when the evolving spacecraft state lies inside an admissible region.
+
+The central question is whether coupled CubeSat operational constraints can be represented as a geometry-based feasible region that yields fast, accurate, and traceable pass-level science windows without dense numerical propagation for each decision.
+The scope is intentionally narrow: near-circular LEO missions, pass-level window generation rather than full mission scheduling, and a deterministic geometric core that can later be refined by auxiliary thermal, power, and data constraints.
+
+\section{Constraint-based operational formulation}
+\label{sec:framework}
+
+This section states the mathematical framing that motivates the remainder of the paper.
+The current DarkNESS model occupies the deterministic, pass-level core of a broader constraint-driven operations problem.
+
+\subsection{Formal definitions}
+
+\begin{definition}[Operational constraint]
+An operational constraint is a scalar function of spacecraft state and time,
+\begin{equation}
+g_i(\mathbf{x},t)\ge 0,
+\label{eq:constraint_general}
+\end{equation}
+where $\mathbf{x}(t)\in\mathcal{X}$ is the spacecraft state and the boundary $g_i(\mathbf{x},t)=0$ marks the transition between admissible and inadmissible operation for requirement $i$.
+\end{definition}
+
+\begin{definition}[Feasible operating region]
+The time-varying feasible operating region is
+\begin{equation}
+\mathcal{F}(t)
+=
+\left\{
+\mathbf{x}\in\mathcal{X} :
+g_i(\mathbf{x},t)\ge 0,\quad i=1,\ldots,m
+\right\}.
+\label{eq:feasible_region}
+\end{equation}
+Science is permitted if and only if $\mathbf{x}(t)\in\mathcal{F}(t)$.
+\end{definition}
+
+\begin{definition}[Reduced operational state]
+For the mission class considered here, a reduced state is
+\begin{equation}
+\mathbf{z}(t)=\big(u(t),q(t),T(t),E(t),D(t)\big),
+\label{eq:reduced_state}
+\end{equation}
+where $u$ is orbital phase, $q$ is a compact pointing variable, $T$ is detector temperature, $E$ is available energy or state of charge, and $D$ is onboard data occupancy.
+\end{definition}
+
+\begin{remark}
+The present paper resolves the dominant geometry and detector-timing constraints analytically and treats thermal, power, and data-handling limits as auxiliary constraints that can only shrink, never enlarge, the admissible set.
+\end{remark}
+
+\subsection{Orbital-phase reduction}
+
+\begin{definition}[Executable phase set]
+Let $A_i(t)\subset S^1$ denote the allowed subset of orbital phase for constraint $i$.
+The executable phase set is
+\begin{equation}
+A_{\mathrm{exec}}(t)=\bigcap_{i=1}^{m}A_i(t).
+\label{eq:Aexec}
+\end{equation}
+Executable observation windows are the connected components of $A_{\mathrm{exec}}(t)$ mapped to time through the mean motion.
+\end{definition}
+
+\begin{proposition}[Deterministic arc-intersection reduction]
+Under the assumptions of Section \ref{sec:assumptions}, if the active pass-level geometric constraints are umbra membership and target clearance, then the admissible geometric phase set is
+\begin{equation}
+A_{\mathrm{open}}(t)=I_U(t)\cap I_T(t),
+\label{eq:Aopen}
+\end{equation}
+where $I_U$ is the umbra interval and $I_T$ is the target-clear interval.
+\end{proposition}
+
+\begin{remark}
+The shutterless detector timing constraint does not alter the geometric arc construction itself; it selects feasible $(N,B)$ pairs inside the window defined by $A_{\mathrm{open}}(t)$.
+\end{remark}
+
+\subsection{Operational interpretation}
+
+\begin{proposition}[Boundary crossings define operational events]
+Each boundary $g_i(\mathbf{x},t)=0$ and each endpoint of a connected component of $A_{\mathrm{exec}}(t)$ defines an event surface that can trigger the start or termination of an operational mode.
+\end{proposition}
+
+\begin{remark}
+In this sense the present scheduler is event-driven rather than purely timeline-driven, even though the analytical development remains deterministic and pass-level.
+This gives a direct bridge from geometric boundary tests to operational rules, events, and state transitions in a higher-level architecture description.
+\end{remark}
+
+\begin{table}[t]
+\centering
+\caption{Nested formulations of the constraint-driven operations problem.}
+\label{tab:nested_formulations}
+\small
+\begin{tabular}{p{3.0cm}p{5.0cm}p{5.3cm}}
+\toprule
+Formulation & Mathematical object & Role in this paper \\
+\midrule
+Feasible region & $\mathcal{F}(t)=\{\mathbf{x}:g_i(\mathbf{x},t)\ge 0\}$ & General operations view: admissibility is set membership rather than timeline compliance \\
+Orbital-phase reduction & $A_{\mathrm{exec}}(t)=\bigcap_i A_i(t)\subset S^1$ & Fast computational reduction for near-circular LEO observation windows \\
+Event-triggered execution & Boundaries $g_i=0$ and endpoints of $A_{\mathrm{exec}}$ & Maps geometry to operational rules, events, and mode transitions \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Mission class and assumptions}
+\label{sec:assumptions}
+
+\subsection{Orbital assumptions}
+
+We assume:
+\begin{itemize}
+\item near-circular LEO with semimajor axis $a$ and eccentricity $e \approx 0$,
+\item spherical Earth of radius $\Rearth$ as the occulting body,
+\item cylindrical umbra approximation with parallel solar rays,
+\item Sun and inertial target directions constant over one orbit,
+\item secular RAAN evolution dominated by J2,
+\item a conic instrument field of view with half-angle $\theta_F$.
+\end{itemize}
+
+\subsection{Instrument and operations assumptions}
+
+We assume:
+\begin{itemize}
+\item imaging is allowed only when the required geometric conditions are satisfied,
+\item a fixed activation time $A$ precedes imaging,
+\item the detector is shutterless and must complete readout before leaving the allowed window,
+\item per-pixel sampling is an integer $N$ and sets the readout duration,
+\item effective read noise decreases as $\sigma_r(N)=\sigma_{r,1}/\sqrt{N}$.
+\end{itemize}
+
+\section{Closed-form orbital and celestial geometry}
+
+\subsection{Orbit rate and RAAN precession}
+
+The mean motion is
+\begin{equation}
+n=\sqrt{\frac{\muearth}{a^3}}.
+\end{equation}
+
+Using the standard J2 secular rate for the right ascension of ascending node,
+\begin{equation}
+\dot{\Omega}
+=
+-\frac{3}{2}\,n\,\Jtwo\left(\frac{\Rearth}{p}\right)^{2}\cos i,
+\qquad
+p=a(1-e^{2}),
+\label{eq:raan_rate}
+\end{equation}
+and therefore
+\begin{equation}
+\Omega(t)=\Omega_0+\dot{\Omega}(t-t_0).
+\label{eq:raan_time}
+\end{equation}
+
+\subsection{Beta angle to an inertial direction}
+
+Let the orbit-normal unit vector in ECI be
+\begin{equation}
+\hat{\mathbf{h}}
+=
+\begin{bmatrix}
+\sin i \,\sin\Omega\\
+-\sin i \,\cos\Omega\\
+\cos i
+\end{bmatrix},
+\label{eq:hhat}
+\end{equation}
+and let an inertial direction have right ascension $\alpha$ and declination $\delta$, with unit vector
+\begin{equation}
+\hat{\mathbf{r}}(\alpha,\delta)=
+\begin{bmatrix}
+\cos\alpha\cos\delta\\
+\sin\alpha\cos\delta\\
+\sin\delta
+\end{bmatrix}.
+\label{eq:rhat}
+\end{equation}
+
+Define the beta angle as
+\begin{equation}
+\beta = \sin^{-1}\!\left(\hat{\mathbf{h}}\cdot \hat{\mathbf{r}}\right).
+\label{eq:beta_dot}
+\end{equation}
+
+In terms of $(i,\Omega)$ and $(\alpha,\delta)$, this becomes
+\begin{equation}
+\beta(\alpha,\delta;i,\Omega)
+=
+\sin^{-1}\!\Big(
+\cos i \,\sin\delta
+-
+\sin i \,\cos\delta \,\sin(\alpha-\Omega)
+\Big).
+\label{eq:beta_closed}
+\end{equation}
+
+\subsection{Argument of latitude of culmination}
+
+Let $u$ be argument of latitude in the orbit plane.
+Define $u_c$ as the argument of latitude where the inertial direction reaches maximum orbital elevation.
+A convenient closed form is
+\begin{align}
+\sin u_c &= \frac{\sin i \,\sin\delta + \cos i \,\cos\delta \,\sin(\alpha-\Omega)}{\cos\beta},
+\label{eq:uc_sin}\\
+\cos u_c &= \frac{\cos\delta \,\cos(\alpha-\Omega)}{\cos\beta},
+\label{eq:uc_cos}\\
+u_c &= \mathrm{atan2}\!\left(\sin u_c,\cos u_c\right).
+\label{eq:uc_atan2}
+\end{align}
+
+\subsection{Orbital elevation angle}
+
+Define the orbital elevation angle $E(u)$ as the target elevation above local horizontal.
+Then
+\begin{equation}
+E(u)=\sin^{-1}\!\Big(\cos\beta\,\cos(u-u_c)\Big).
+\label{eq:e_of_u}
+\end{equation}
+
+For a required minimum elevation $E_{\min}$, the symmetric acquisition and loss arguments of latitude are
+\begin{equation}
+u_{A,L}
+=
+u_c
+\pm
+\cos^{-1}\!\left(\frac{\sin E_{\min}}{\cos\beta}\right).
+\label{eq:ual}
+\end{equation}
+
+The corresponding half-width is
+\begin{equation}
+\lambda(E_{\min},\beta)=
+\cos^{-1}\!\left(\frac{\sin E_{\min}}{\cos\beta}\right).
+\label{eq:lambda_general}
+\end{equation}
+
+\section{Inertial target visibility constraints}
+
+\subsection{Target geometry in the orbit frame}
+
+For an inertial celestial target (e.g., the Galactic Center at $(\alpha_T,\delta_T)$), the beta angle and culmination argument of latitude are computed using the target's right ascension and declination.
+Using the orbit-normal vector and the target direction unit vector, the target beta angle is
+\begin{equation}
+\beta_T(t) = \sin^{-1}\!\big(\sin i\,\cos\delta_T\,\sin(\Omega(t)-\alpha_T)+\cos i\,\sin\delta_T\big).
+\label{eq:beta_target}
+\end{equation}
+
+The argument of latitude at which the target reaches maximum elevation is
+\begin{equation}
+u_{c,T}(t)=\mathrm{atan2}\!\left(
+\cos i\,\cos\delta_T\,\sin(\alpha_T-\Omega(t))+\sin i\,\sin\delta_T,\;
+\cos\delta_T\,\cos(\alpha_T-\Omega(t))
+\right),
+\label{eq:uc_target}
+\end{equation}
+where the division by $\cos\beta_T$ has been absorbed into the arctangent normalization.
+
+\subsection{Earth limb clearance for a conic FOV}
+
+The Earth limb elevation angle (relative to local horizontal) is
+\begin{equation}
+E_{\mathrm{limb}}=-\cos^{-1}(\rho),
+\label{eq:elim_target}
+\end{equation}
+where $\rho=\Rearth/a$ is the Earth-occlusion ratio.
+
+For a conic instrument field-of-view with half-cone angle $\theta_F$, the entire FOV must clear Earth's limb.
+This requires the nadir elevation to exceed
+\begin{equation}
+E_{\mathrm{req}}=E_{\mathrm{limb}}+\theta_F.
+\label{eq:ereq_target}
+\end{equation}
+
+Using the orbital elevation angle $E(u)=\sin^{-1}(\cos\beta_T\,\cos(u-u_{c,T}))$, the target-clear window extends from arguments of latitude $u_{c,T}-\lambda_T$ to $u_{c,T}+\lambda_T$, where the half-width is
+\begin{equation}
+\lambda_T(t)=\cos^{-1}\!\left(\frac{\sin E_{\mathrm{req}}}{\cos\beta_T(t)}\right).
+\label{eq:lambda_target_final}
+\end{equation}
+
+\section{Observation windows in argument of latitude}
+
+\subsection{Earth limb and conic FOV margin}
+
+Let $\rho=\Rearth/a$.
+Earth's apparent angular radius from the spacecraft is
+\begin{equation}
+\alpha_E=\sin^{-1}(\rho).
+\end{equation}
+
+The Earth limb elevation angle relative to local horizontal is
+\begin{equation}
+E_{\mathrm{limb}}=-\cos^{-1}(\rho).
+\label{eq:elim}
+\end{equation}
+
+To keep the entire conic field of view clear of Earth, require
+\begin{equation}
+E_{\mathrm{req}}=E_{\mathrm{limb}}+\theta_F.
+\label{eq:ereq}
+\end{equation}
+
+\subsection{Target-clear window}
+
+For an inertial target $T$ with beta angle $\beta_T(t)$ and culmination argument $u_{c,T}(t)$, define
+\begin{equation}
+\lambda_T(t)
+=
+\cos^{-1}\!\left(\frac{\sin E_{\mathrm{req}}}{\cos\beta_T(t)}\right).
+\label{eq:lambda_target}
+\end{equation}
+
+The target-clear interval is
+\begin{equation}
+u\in[u_{c,T}-\lambda_T,\;u_{c,T}+\lambda_T].
+\end{equation}
+
+\subsection{Umbra window}
+
+Let $\beta_\odot(t)$ be the solar beta angle.
+For a circular orbit and cylindrical umbra approximation, the umbra half-angle is
+\begin{equation}
+\nu_U(t)
+=
+\cos^{-1}\!\left(
+\frac{\sqrt{1-\rho^2}}{\cos\beta_\odot(t)}
+\right),
+\label{eq:nu_umbra}
+\end{equation}
+and eclipse exists only when
+\begin{equation}
+\left|\beta_\odot(t)\right| < \sin^{-1}(\rho).
+\label{eq:eclipse_condition}
+\end{equation}
+
+The umbra duration is
+\begin{equation}
+T_U(t)=\frac{2\nu_U(t)}{n}.
+\label{eq:t_umbra}
+\end{equation}
+
+Let $u_{c,\odot}(t)$ be computed from the solar direction. Then define
+\begin{equation}
+u_{c,U}(t)=u_{c,\odot}(t)+\pi.
+\label{eq:uc_umbra}
+\end{equation}
+
+The umbra interval is
+\begin{equation}
+u\in[u_{c,U}-\nu_U,\;u_{c,U}+\nu_U].
+\end{equation}
+
+\subsection{Arc intersection for open-sky budget}
+
+The open-sky observation window is the intersection of two circular arcs in argument of latitude space:
+\begin{itemize}
+\item The \textbf{umbra arc}: centered at $u_{c,U}(t)=u_{c,\odot}(t)+\pi$ with half-width $\nu_U(t)$,
+\item The \textbf{target-clear arc}: centered at $u_{c,T}(t)$ with half-width $\lambda_T(t)$.
+\end{itemize}
+
+Let $d(t)$ denote the wrapped angular separation between arc centers:
+\begin{equation}
+d(t)=\left|\mathrm{remainder}\!\left(u_{c,U}(t)-u_{c,T}(t),2\pi\right)\right|.
+\label{eq:wrapped_dist}
+\end{equation}
+
+The overlap angle $\Lambda(t)$ is computed as:
+\begin{equation}
+\Lambda(t)=
+\begin{cases}
+0, & d(t) \ge \nu_U(t)+\lambda_T(t) \quad \text{(disjoint)},\\
+2\min(\nu_U(t),\lambda_T(t)), & d(t) \le |\nu_U(t)-\lambda_T(t)| \quad \text{(one contained)},\\
+\nu_U(t)+\lambda_T(t)-d(t), & \text{otherwise} \quad \text{(partial overlap)}.
+\end{cases}
+\label{eq:Lambda}
+\end{equation}
+
+This formulation is symmetric and handles wrapping at $2\pi$ automatically.
+The open observation time per orbit is then
+\begin{equation}
+T_{\mathrm{open}}(t)=\frac{\Lambda(t)}{n}.
+\label{eq:Topen}
+\end{equation}
+
+When no target constraint is active (or $\lambda_T \to \pi$), the open-sky budget reduces to the umbra duration $T_U(t)=2\nu_U(t)/n$.
+
+\section{Shutterless Skipper-CCD timing and SNR optimization}
+
+\subsection{Timing model}
+
+Let $A$ be activation time.
+Let $B$ be commanded exposure time.
+Let $N$ be the number of non-destructive samples per pixel.
+Let $N_{\mathrm{pix}}$ be total pixels read per exposure and $r_{\mathrm{read}}$ be read rate in pixels per second per sample.
+Then
+\begin{equation}
+C(N)=\frac{N_{\mathrm{pix}}}{r_{\mathrm{read}}}\,N.
+\label{eq:CN}
+\end{equation}
+
+To keep exposure and readout within the open window,
+\begin{equation}
+A+B+C(N)\le T_{\mathrm{open}}(t).
+\label{eq:time_constraint}
+\end{equation}
+
+For a given $N$, the maximum feasible exposure is
+\begin{equation}
+B(N,t)=T_{\mathrm{open}}(t)-A-C(N).
+\label{eq:BofN}
+\end{equation}
+
+\subsection{SNR model}
+
+Assume per-pixel signal rate $s$ and background-plus-dark rate $b$.
+Then
+\begin{equation}
+\sigma_r(N)=\frac{\sigma_{r,1}}{\sqrt{N}},
+\label{eq:sigma_r}
+\end{equation}
+and the per-pixel signal-to-noise ratio is
+\begin{equation}
+\mathrm{SNR}(B,N)
+=
+\frac{sB}{\sqrt{(s+b)B + \sigma_r^2(N)}}.
+\label{eq:SNR}
+\end{equation}
+
+Substituting the timing constraint gives
+\begin{equation}
+\mathrm{SNR}(N;t)
+=
+\frac{s\,B(N,t)}{\sqrt{(s+b)\,B(N,t)+\sigma_{r,1}^2/N}}.
+\label{eq:SNR_Nt}
+\end{equation}
+
+\subsection{Signal-to-noise optimization}
+
+The goal is to maximize the per-pixel signal-to-noise ratio subject to the observation window constraint.
+The SNR depends on both exposure time $B$ and sample count $N$ through equation \eqref{eq:SNR_Nt},
+where $B(N,t)=T_{\mathrm{open}}(t)-A-C(N)$ is the maximum feasible exposure for a given sample count.
+
+The optimization is a discrete search over sample count:
+\begin{align}
+N^\star(t) &= \arg\max_{N\in\mathbb{Z}^+,\;1\le N\le N_{\max}}\; \mathrm{SNR}(N;t),\\
+B^\star(t) &= B\big(N^\star(t),t\big),
+\label{eq:optimization}
+\end{align}
+subject to the constraint $B(N,t)>0$ (exposure must be positive).
+
+Since the SNR landscape is unimodal (early samples reduce noise rapidly; later samples provide diminishing returns while reducing exposure), a simple 1-D discrete search is efficient.
+
+\begin{algorithm}[t]
+\caption{Date-driven operations optimizer}
+\label{alg:optimizer}
+\begin{algorithmic}[1]
+\Require Date $t$, orbit $(a,e,i,\Omega_0,t_0)$, target $(\alpha_T,\delta_T)$, field-of-view half-angle $\theta_F$, activation time $A$, pixels $N_{\mathrm{pix}}$, read rate $r_{\mathrm{read}}$, noise $\sigma_{r,1}$, rates $s,b$, and maximum sample count $N_{\max}$
+\State Compute $n=\sqrt{\muearth/a^3}$
+\State Compute $\dot{\Omega}$ and $\Omega(t)$
+\State Compute solar coordinates $(\alpha_\odot(t),\delta_\odot(t))$
+\State Compute $\beta_\odot(t)$ and $u_{c,\odot}(t)$
+\If{$|\beta_\odot(t)| \ge \sin^{-1}(\Rearth/a)$}
+    \State Return no umbra and $T_{\mathrm{open}}(t)=0$
+\EndIf
+\State Compute $\nu_U(t)$ and $u_{c,U}(t)=u_{c,\odot}(t)+\pi$
+\State Compute $\beta_T(t)$ and $u_{c,T}(t)$
+\State Compute $E_{\mathrm{limb}}$ and $E_{\mathrm{req}}$
+\State Compute $\lambda_T(t)$
+\State Compute $\Lambda(t)$ and $T_{\mathrm{open}}(t)$
+\For{$N=1$ to $N_{\max}$}
+    \State $C(N)=(N_{\mathrm{pix}}/r_{\mathrm{read}})\,N$
+    \State $B=T_{\mathrm{open}}(t)-A-C(N)$
+    \If{$B \le 0$}
+        \State continue
+    \EndIf
+    \State Evaluate $\mathrm{SNR}(N;t)$
+\EndFor
+\State Return $(N^\star,B^\star)$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Flight scheduler: real-time operations}
+
+\subsection{TLE-based orbit propagation}
+
+In operational use, the spacecraft orbit is described by a two-line orbital element (TLE) set, which includes the current epoch, mean motion, RAAN, inclination, and eccentricity.
+The scheduler ingests a TLE and a query timestamp to compute the optimal imaging parameters at that time.
+
+For the given TLE epoch and query time, the RAAN at the query time is computed using equation \eqref{eq:raan_time}.
+The solar position ($\alpha_\odot$, $\delta_\odot$) is computed using a standard solar ephemeris.
+The target direction ($\alpha_T$, $\delta_T$) is assumed constant in the J2000 inertial frame (valid for short mission durations or updated periodically from updated target catalogs).
+
+\subsection{Real-time scheduling algorithm}
+
+The flight scheduler computes $T_{\mathrm{open}}(t)$ given:
+\begin{itemize}
+\item Current time $t$ and orbit elements from the TLE,
+\item Inertial target position $(\alpha_T,\delta_T)$,
+\item Instrument parameters and field-of-view half-angle $\theta_F$.
+\end{itemize}
+
+The algorithm (Algorithm \ref{alg:optimizer}) then evaluates SNR for each sample count $N$ from 1 to $N_{\max}$, returning the pair $(N^\star,B^\star)$ that maximizes SNR.
+
+The computation is lightweight (microseconds per query on modern CPUs) and requires only vanilla Python with no floating-point mathematics libraries beyond the standard library, enabling straightforward porting to C++ or embedded systems.
+
+\section{DarkNESS demonstration and implementation}
+
+\subsection{Mission scenario}
+
+DarkNESS is used as the working example because it combines:
+\begin{enumerate}
+\item Geometry-limited observing (only during eclipse, with target-specific FOV constraints),
+\item Shutterless Skipper-CCD operation (non-destructive sampling with variable readout time),
+\item Seasonal variation (RAAN precession and solar motion affect both eclipse and target visibility).
+\end{enumerate}
+
+The framework is general to small LEO astrophysics missions that satisfy the assumptions in Section \ref{sec:assumptions}.
+
+\subsection{Seasonal analysis}
+
+The optimal $(N, B)$ pair varies significantly with calendar date and orbital RAAN due to:
+\begin{itemize}
+\item \textbf{Eclipse geometry}: The solar beta angle changes throughout the year, affecting umbra duration and location.
+\item \textbf{Target elevation}: The target beta angle and culmination argument vary with RAAN precession, changing the overlap with the umbra arc.
+\item \textbf{Available window}: $T_{\mathrm{open}}(t)$ can vary from zero (target always obstructed) to the full umbra duration, driving the SNR landscape.
+\end{itemize}
+
+Visualization of the full year at fine resolution (5-minute observation times, 1\textdegree RAAN steps, 365 days) produces a landscape showing:
+\begin{enumerate}
+\item \textbf{Eclipse Phase Landscape}: A heatmap with time-through-eclipse on the $y$-axis and calendar date on the $x$-axis, colored by operational phase (startup, exposure, readout) or obstruction status.
+\item \textbf{Open-Sky Budget}: Stacked-area plots showing usable science time vs. time, with animated RAAN sweeps to visualize seasonal precession.
+\item \textbf{Orbital Arc Diagrams}: Inertial equatorial frame visualizations (top-down view of Earth) showing the umbra arc, target-clear arc, sun direction, and ascending node orientation as the year progresses.
+\end{enumerate}
+
+\subsection{Software architecture}
+
+The implementation is modular and written in vanilla Python 3 to enable straightforward porting to C++ for flight software:
+
+\begin{itemize}
+\item \textbf{orbit.py}: Orbital mechanics (mean motion, J2 precession, beta angles, culmination arguments, eclipse half-angle).
+\item \textbf{sun.py}: Solar ephemeris (low-order approximation for RA/Dec of the Sun throughout the year).
+\item \textbf{target.py}: Inertial target geometry (target visibility, clear-sky half-angle, arc intersection).
+\item \textbf{optimize.py}: SNR maximization (discrete search over sample count, exposure constraint).
+\item \textbf{schedule.py}: Scheduling driver (combines orbit, sun, target, optimize; computes per-date results).
+\item \textbf{flight.py}: Real-time scheduler (TLE parsing, timestamp handling, command-line interface).
+\end{itemize}
+
+Dependencies are intentionally minimal: only the Python standard library (math, datetime, dataclasses) for core algorithms. Matplotlib is used only for visualization, not in the scheduler itself.
+
+\begin{table}[t]
+\centering
+\caption{DarkNESS-like parameters for operational scheduling and optimization.}
+\label{tab:darkness_params}
+\begin{tabular}{lll}
+\toprule
+Parameter & Symbol & Value \\
+\midrule
+\multicolumn{3}{c}{\textit{Orbital}} \\
+Altitude & $h$ & 500 km \\
+Semimajor axis & $a$ & $6.878 \times 10^6$ m \\
+Eccentricity & $e$ & 0 (circular) \\
+Inclination & $i$ & 51.6\textdegree \\
+Initial RAAN & $\Omega_0$ & Variable \\
+\multicolumn{3}{c}{\textit{Target}} \\
+Target (Galactic Center) & $(\alpha_T,\delta_T)$ & (266.42\textdegree, $-$29.01\textdegree) \\
+Field-of-view half-angle & $\theta_F$ & 10\textdegree \\
+\multicolumn{3}{c}{\textit{Instrument (Skipper-CCD)}} \\
+Activation time & $A$ & 60 s \\
+Total pixels per readout & $N_{\mathrm{pix}}$ & 1,300,000 \\
+Read rate per sample & $r_{\mathrm{read}}$ & 14,000 pixels/s \\
+Readout per sample & $C_0$ & $\approx 93$ s \\
+Maximum samples per pixel & $N_{\max}$ & 20 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+
+\subsection{Strengths and transparency}
+
+The framework is purely analytical and transparent:
+\begin{itemize}
+\item Closed-form expressions for all window boundaries eliminate numerical integration or sampling artifacts.
+\item The SNR landscape is smooth and unimodal in $N$, enabling simple 1-D discrete search.
+\item Each intermediate quantity ($\beta$, $u_c$, $\Lambda$, $T_{\mathrm{open}}$) has a clear geometric or physical meaning.
+\item Computation is fast (microseconds per call) and suitable for onboard or real-time operations.
+\end{itemize}
+
+\subsection{Model limitations and extensions}
+
+The framework's limitations follow directly from its assumptions:
+
+\begin{itemize}
+\item \textbf{Circular orbit}: For eccentric orbits, the argument-of-latitude parameterization should be replaced with mean anomaly or eccentric anomaly, and the eclipse half-angle formula adjusted for varying distance.
+
+\item \textbf{Cylindrical umbra}: The penumbra (partial shadow) is neglected. If diffuse X-ray scattering from the penumbra is significant (e.g., for extended sources), the model should be extended to include penumbral boundaries.
+
+\item \textbf{Inertial target}: The target direction is assumed constant over the relevant timescale. For Galactic Center observations, this is valid; for moving objects (asteroids, satellites), the target position should be updated from an ephemeris.
+
+\item \textbf{Shutterless readout}: The model assumes readout timing is decoupled from exposure, with a fixed per-sample readout time. If charge-transfer inefficiency or inter-pixel charge-spreading are significant, the exposure model should be refined.
+
+\item \textbf{SNR model}: The model assumes Poisson statistics and read-noise scaling with $1/\sqrt{N}$. If correlated noise, cross-talk, or cosmic rays dominate, a more detailed noise budget may be needed.
+\end{itemize}
+
+\subsection{Broader generalizations}
+
+The present paper treats the admissible operating set deterministically and reduces the dominant constraints to analytically defined windows in orbital phase.
+Two related extensions preserve the same conceptual backbone while addressing limitations of binary pass-level feasibility.
+
+\subsubsection{Probabilistic constraint geometry}
+
+The deterministic constraint algebra assumes exact boundary knowledge.
+In practice, the state is uncertain: TLE drift perturbs orbital geometry, attitude errors perturb boresight direction, and thermal-model error perturbs subsystem readiness.
+The spacecraft therefore occupies not a point in state space but a distribution over state space, and the admissible set should be interpreted through confidence as well as nominal geometry.
+
+Instead of requiring $g_i(\mathbf{x},t)\ge 0$ exactly, one may impose a chance constraint
+\begin{equation}
+\mathbb{P}\!\left[g_i(\mathbf{x},t)\ge 0\right]\ge p_i,
+\label{eq:chance_constraint}
+\end{equation}
+and define the robust feasible region
+\begin{equation}
+\mathcal{F}_p(t)=
+\left\{
+\mathbf{x}\in\mathcal{X} :
+\mathbb{P}\!\left[g_i(\mathbf{x},t)\ge 0\right]\ge p_i,\quad i=1,\ldots,m
+\right\}.
+\label{eq:feasible_region_prob}
+\end{equation}
+In geometric terms, direction uncertainty widens cones, timing uncertainty thickens intervals, and subsystem-model uncertainty shifts constraint surfaces.
+The result is a probabilistic feasible region whose boundaries are better interpreted as risk surfaces than as exact switching surfaces.
+
+This extension matters operationally because small errors near deterministic boundaries can induce mode thrashing or silent margin violation.
+A confidence-bounded admissibility test would preserve the event-driven structure of DAO while replacing binary ``observe / do not observe'' logic with risk-bounded autonomy.
+
+\subsubsection{Spherical feasible-attitude sets}
+
+Many active constraints are naturally directional.
+Target visibility, Sun exclusion, Earth avoidance, and some thermal surrogates are most naturally written as regions on the unit sphere of directions rather than only as scalar checks embedded in full state space.
+This suggests a second extension: lift admissibility from one-dimensional orbital-phase arcs to a time-varying feasible attitude set on $S^2$.
+
+If each pointing-related constraint defines a spherical region $C_i(t)\subset S^2$, then the feasible attitude set is
+\begin{equation}
+A(t)=\bigcap_i C_i(t)\subset S^2.
+\label{eq:attitude_set}
+\end{equation}
+A representative construction is
+\begin{equation}
+A(t)=C_{\mathrm{tar}}(t)\cap C_{\mathrm{sun}}^{c}(t)\cap C_{\mathrm{earth}}^{c}(t)\cap C_{\mathrm{thermal}}(t),
+\label{eq:attitude_set_example}
+\end{equation}
+where the target region is a spherical cap, the Sun and Earth exclusions are cap complements, and the thermal term is a directional admissibility set generated by a view-factor or reduced-order temperature model.
+
+This reframes the instantaneous operations question.
+Instead of asking only whether the current state is feasible, one asks whether any feasible pointing exists, how large the allowed attitude patch is, and whether the spacecraft can move within that patch without leaving admissibility.
+The present arc-based DarkNESS model then appears as the one-dimensional, pass-level projection of a more general directional feasible-set geometry.
+
+\subsubsection{New operational metrics}
+
+The practical value of the spherical formulation is not aesthetic; it adds measurable operational quantities that binary feasibility hides.
+Four examples are
+\begin{align}
+A(t)\neq \varnothing &\qquad \text{existence of any feasible pointing,} \\
+m(\hat{\mathbf{b}},t) &= \min_{\hat{\mathbf{q}}\in\partial A(t)} d_{S^2}\!\left(\hat{\mathbf{b}},\hat{\mathbf{q}}\right), \label{eq:margin_s2}\\
+\mu\!\left(A(t)\right) &\qquad \text{spherical area or capacity,} \\
+\gamma:[0,1]\to A(t) &\qquad \text{existence of a continuous retargeting path.}
+\end{align}
+These quantify safety margin, robustness, and retargetability directly.
+They also support a useful computational argument: intrinsic geometry on $S^2$ can provide fast screening, margin assessment, and onboard-friendly decision logic without full-state brute-force attitude search.
+
+These extensions should be framed carefully.
+Thermal and power limits are not purely geometric states, so the strongest honest claim is not that all operations reduce to geometry.
+Rather, geometry defines the fast outer skeleton of admissibility, and low-order subsystem states refine it into the final feasible region.
+
+\subsection{Operational considerations}
+
+In practice, the scheduler should account for:
+\begin{itemize}
+\item \textbf{TLE staleness}: RAAN precession is typically $\sim 0.2\textdegree$/day for ISS-class orbits. TLEs should be updated every few days to maintain $<1\textdegree$ accuracy in $\Omega(t)$.
+
+\item \textbf{Solar ephemeris accuracy}: The solar position influences both eclipse timing and target geometry. A standard solar ephemeris (e.g., SOFA, Astropy) should be used; the low-order approximation in sun.py is sufficient for demonstration but not flight-grade.
+
+\item \textbf{Seasonal updates}: The optimal $(N, B)$ pair changes substantially throughout the year. A lookup table or periodic re-computation using fresh TLEs is appropriate for mission planning.
+
+\item \textbf{Robustness}: The algorithm gracefully degrades (returns zero open-sky time) when the target is always obstructed or eclipse never occurs.
+\end{itemize}
+
+\section{Conclusions}
+
+This work presents a complete closed-form analytical framework for scheduling shutterless Skipper-CCD imaging on geometry-constrained LEO astrophysics missions.
+The key contributions are:
+
+\begin{enumerate}
+\item \textbf{Unified observation window model}: Closed-form expressions for eclipse geometry, inertial target visibility, and their arc-intersection open-sky budget, all parameterized by calendar date and orbit elements.
+
+\item \textbf{SNR-optimal operations}: A simple discrete optimization that maximizes signal-to-noise ratio by selecting the number of non-destructive samples per pixel, subject to the time-varying observation window constraint.
+
+\item \textbf{Real-time flight scheduler}: A lightweight, vanilla-Python implementation that accepts TLE data and timestamps and returns optimal imaging parameters (N, B) in microseconds, suitable for both ground operations and onboard computing.
+
+\item \textbf{Seasonal analysis framework}: Visualizations (heatmaps, animated sweeps, orbital arc diagrams) that reveal how geometric constraints evolve throughout the year, informing mission planning and science yield estimation.
+\end{enumerate}
+
+The framework is demonstrated using DarkNESS, a proposed 6U nanosatellite for diffuse X-ray searches toward the Galactic Center.
+The method applies to any LEO astrophysics mission with shutterless detectors and geometry-limited observation windows, and it provides a deterministic core that can be extended to eccentric orbits, chance-constrained admissibility, spherical feasible-attitude sets, or refined noise models as needed.
+
+Future work includes:
+\begin{itemize}
+\item Integration with detailed pointing jitter analysis and uncertainty-aware chance constraints,
+\item Extension from orbital-phase windows to feasible attitude sets on $S^2$ for retargeting and robustness analysis,
+\item Extension to multi-target scheduling (e.g., scanning across the Galactic plane),
+\item Adaptive scheduling based on detected background levels or cosmic-ray rates.
+\end{itemize}
+
+\begin{thebibliography}{99}
+
+\bibitem{vallado2006}
+Vallado, D.~A., Crawford, P., Hujsa, R., \& Kelso, T.~S. (2006).
+\textit{Revisiting Spacetrack Report \#3: Rev. 2}.
+Technical Report, Center for Space Standards \& Innovation.
+
+\bibitem{Curtis2013}
+Curtis, H.~D. (2013).
+\textit{Orbital Mechanics for Engineering Students} (3rd ed.).
+Butterworth-Heinemann, Oxford.
+
+\bibitem{Wertz2011}
+Wertz, J.~R. (Ed.). (2011).
+\textit{Space Mission Engineering: The New SMAD}.
+Microcosm Press, Los Angeles.
+
+\bibitem{HopkinsSkipper}
+Hopkins, A., et al.
+\textit{Skipper-CCD: A Detached Sensor for High-Sensitivity Imaging and Spectroscopy}.
+\textit{Journal of Instrumentation}, in preparation.
+
+\bibitem{PearceJ2}
+Pearce, E.~C., \& Smith, T.~B. (1995).
+J2 secular perturbation effects on LEO mission design.
+\textit{Advances in the Astronautical Sciences}, 89, 123--142.
+
+\bibitem{GilmourTLE}
+Gilmour, I., \& Swinerd, G. (2002).
+Accuracy of Two-Line Orbital Elements: An assessment.
+\textit{Journal of Guidance, Control, and Dynamics}, 25(4), 780--792.
+
+\bibitem{SOFA}
+Standards of Fundamental Astronomy (SOFA) Library.
+International Astronomical Union. \url{https://www.iausofa.org/}.
+
+\end{thebibliography}
+
+\end{document}

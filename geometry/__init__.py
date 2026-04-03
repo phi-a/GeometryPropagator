@@ -1,18 +1,28 @@
-"""SO3 attitude geometry package.
+"""Spacecraft geometry kernel: orbit mechanics, attitude, and body shape.
 
-Active layers:
+Active modules
+--------------
     orbit        orbit configuration and precomputed geometry
     so3          SO(3) rotation tools
     laws         steady-state attitude laws
     transitions  finite-rate wrappers around base laws
     CubeSat      body-fixed CubeSat geometry builders and realizations
-    earthdisk    Earth-disk quadrature and face coordinates
-    panel        panel-resolved radiator geometry
-    propagator   active disk-integrated and panel-resolved sweeps
 
-Legacy layers:
+Legacy modules
+--------------
     legacy       older scalar flat-plate approximations kept for reference
+
+View-factor layer
+-----------------
+Directional visibility, Earth-disk quadrature, occlusion, and orbit-sweep
+propagators now live in the ``viewfactor`` package:
+
+    from viewfactor import (earth_loading_propagate, panel_loading_propagate,
+                            spacecraft_occlusion_mask, integrate_surface_response,
+                            EarthDiskQuadrature, RectangularPanel)
 """
+
+from importlib import import_module
 
 from .orbit import Orbit, beta_uc, direction                           # noqa: F401
 from .so3 import SO3                                                   # noqa: F401
@@ -21,14 +31,36 @@ from .laws import (LVLHFixed, TargetTracking, TargetTrackingNadirRoll,  # noqa: 
 from .transitions import SlewModeSwitch                                # noqa: F401
 from .constants import FACES, S0, J_IR, A_ALB                          # noqa: F401
 from .CubeSat import (CubeSatGeometry, RealizedGeometry, RectSurface,  # noqa: F401
-                      SurfaceNode, build_6u_double_deployable)
-from .earthdisk import (EarthDiskQuadrature, EarthDiskSamples,         # noqa: F401
-                        FACE_LOCAL_FRAMES, AzimuthElevationMask)        # noqa: F401
-from .panel import RectangularPanel, PanelLoadingProfile               # noqa: F401
-from .occlusion import (spacecraft_occlusion_mask,                    # noqa: F401
-                        integrate_surface_response)
-from .propagator import (earth_loading_propagate, EarthLoadingProfile,  # noqa: F401
-                         panel_loading_propagate)
+                      SurfaceNode, build_6u_double_deployable, mount)
 from .legacy import (earth_vf, propagate, thermal_propagate,           # noqa: F401
                      ViewFactorProfile, ThermalProfile)
 from . import legacy                                                   # noqa: F401
+
+_VIEWFACTOR_EXPORTS = {
+    'EarthDiskQuadrature',
+    'EarthDiskSamples',
+    'FACE_LOCAL_FRAMES',
+    'AzimuthElevationMask',
+    'face_coordinates',
+    'integrate_face_response',
+    'RectangularPanel',
+    'PanelLoadingProfile',
+    'spacecraft_occlusion_mask',
+    'integrate_surface_response',
+    'hemisphere_group_view',
+    'earth_loading_propagate',
+    'EarthLoadingProfile',
+    'panel_loading_propagate',
+    'surface_loading_propagate',
+    'SurfaceLoadingProfile',
+}
+
+
+def __getattr__(name):
+    """Lazy backward-compat access to names that moved into viewfactor."""
+    if name in _VIEWFACTOR_EXPORTS:
+        module = import_module('viewfactor')
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

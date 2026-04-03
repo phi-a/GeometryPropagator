@@ -13,4 +13,4 @@ authors = [
 ]
 
 [tool.setuptools]
-packages = ["geometry", "geometry.CubeSat", "geometry.legacy", "tests"]
+packages = ["geometry", "geometry.CubeSat", "geometry.legacy", "viewfactor", "thermal", "tests"]

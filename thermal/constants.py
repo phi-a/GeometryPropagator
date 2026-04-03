@@ -1,0 +1,3 @@
+"""Thermal-layer constants."""
+
+SIGMA_SB = 5.670374419e-8  # W / (m^2 K^4)
