@@ -26,6 +26,7 @@ Implemented now:
 - body-fixed `CubeSat` geometry layer
 - hierarchical deployable-panel realization from hinge states
 - optional rigid geometry-frame -> body-frame mount transform
+- stable surface identities preserved through realization and mount
 - nearest-hit ray queries against realized spacecraft surfaces
 - patch-by-ray spacecraft self-occlusion masks
 - patch-resolved directional integration with spacecraft blockage applied
@@ -57,6 +58,7 @@ The default CubeSat example is:
 What the repo can do today:
 - build and realize spacecraft geometry for default or custom deployment states
 - keep geometry, mount, and attitude as separate concepts
+- interpret mounted faces by current body-frame normal instead of relying on legacy geometry names
 - query first-hit intersections on realized surfaces
 - compute self-occlusion maps for a chosen face or panel patch grid
 - visualize direction-space blockage and face-space blockage in the notebook
@@ -191,6 +193,17 @@ The important frame split is:
 - mount state: how the geometry is attached to the body axes
 - attitude state: how the body frame is oriented in LVLH or ECI
 
+Two interpretation rules matter in the current notebook:
+- surface names such as `bus_+X` are stable geometry identities and are **not** renamed after a mount rotation
+- analysis-facing roles such as `body +Y bus face` should be selected from the mounted geometry by the current face normal
+
+Local face plots use a surface-centered frame:
+- origin: the surface center
+- `u`, `v`: in-plane coordinates on that face
+- `normal`: the outward face direction at the same origin
+
+So the patch view is a face-local map, not a raw `x-y-z` slice. After a mount, `u` and `v` may point along different body axes than the original builder labels.
+
 ## Quick Start
 
 Run the smoke tests:
@@ -213,9 +226,11 @@ jupyter notebook run_spacecraft_geometry.ipynb
 
 The current notebook flow is:
 - view the default deployed geometry
-- view one custom deployment state for intuition
-- run ray and self-occlusion diagnostics on the default deployment
-- inspect both direction-space and face-space blockage plots
+- inspect the default surface summary table and default 3D geometry
+- apply one mounted body-frame mapping for the active demo case
+- inspect the mounted role table: surface name, mounted normal, `+u`, `+v`, center, and tags
+- run ray and self-occlusion diagnostics on the mounted `body +Y` bus face
+- inspect both direction-space and face-space blockage plots with local `u,v,normal` labels
 
 ## Legacy Models
 
