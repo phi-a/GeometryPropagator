@@ -155,6 +155,13 @@ def mount(geom_axis, body_axis, geom_axis2=None, body_axis2=None):
     return SO3(rotation)
 
 
+def rect_patch_grid(width, height, nx, ny):
+    """Return ``(xx, yy)`` meshgrid of equal-area patch centers, shape ``(ny, nx)``."""
+    x = (np.arange(nx) + 0.5) * (width / nx) - 0.5 * width
+    y = (np.arange(ny) + 0.5) * (height / ny) - 0.5 * height
+    return np.meshgrid(x, y, indexing='xy')
+
+
 def _surface_to_dict(surface):
     return {
         'name': surface.name,
@@ -285,19 +292,12 @@ class RectSurface:
     def patch_centers(self):
         """Return patch-center coordinates with shape `(ny, nx, 3)`."""
         nx, ny = self.patch_shape if self.patch_shape is not None else (1, 1)
-        x = np.linspace(-0.5 * self.width + 0.5 * self.width / nx,
-                        0.5 * self.width - 0.5 * self.width / nx,
-                        nx)
-        y = np.linspace(-0.5 * self.height + 0.5 * self.height / ny,
-                        0.5 * self.height - 0.5 * self.height / ny,
-                        ny)
-        xx, yy = np.meshgrid(x, y, indexing='xy')
-        centers = (
+        xx, yy = rect_patch_grid(self.width, self.height, nx, ny)
+        return (
             self.center[None, None, :]
             + xx[..., None] * self.u_axis[None, None, :]
             + yy[..., None] * self.v_axis[None, None, :]
         )
-        return centers
 
     def patch_normals(self):
         """Return patch normals with shape `(ny, nx, 3)`."""

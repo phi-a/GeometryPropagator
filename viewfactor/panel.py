@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from geometry.CubeSat import rect_patch_grid
+
 
 @dataclass(frozen=True)
 class RectangularPanel:
@@ -37,24 +39,9 @@ class RectangularPanel:
         if self.wall_height < 0.0:
             raise ValueError("wall_height must be non-negative")
 
-    @property
-    def dx(self):
-        return self.width / self.nx
-
-    @property
-    def dy(self):
-        return self.height / self.ny
-
     def patch_centers(self):
         """Return patch-center coordinates in the local face plane."""
-        x = np.linspace(-0.5 * self.width + 0.5 * self.dx,
-                        0.5 * self.width - 0.5 * self.dx,
-                        self.nx)
-        y = np.linspace(-0.5 * self.height + 0.5 * self.dy,
-                        0.5 * self.height - 0.5 * self.dy,
-                        self.ny)
-        xx, yy = np.meshgrid(x, y, indexing='xy')
-        return xx, yy
+        return rect_patch_grid(self.width, self.height, self.nx, self.ny)
 
     def patch_visibility(self, dirs_face):
         """Return patch-by-ray transmission through the recessed opening."""
