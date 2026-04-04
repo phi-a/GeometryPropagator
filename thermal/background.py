@@ -21,6 +21,7 @@ class SurfaceBackgroundProfile:
     albedo: np.ndarray
     solar: np.ndarray
     solar_panel_ir: np.ndarray
+    body_ir: np.ndarray
     total: np.ndarray
     eclipse: np.ndarray
 
@@ -28,28 +29,27 @@ class SurfaceBackgroundProfile:
         return self.total.mean(axis=(1, 2))
 
 
-def _panel_temperature_field(profile, solar_panel_temperature_K):
-    temperatures = np.asarray(solar_panel_temperature_K, dtype=float)
-    if np.any(temperatures < 0.0):
-        raise ValueError("solar_panel_temperature_K must be non-negative")
-
-    if temperatures.ndim == 0:
-        return temperatures
-    if temperatures.ndim == 1:
-        if temperatures.shape[0] != profile.u.shape[0]:
+def _broadcast_temperature(u, temperature, view):
+    """Validate and broadcast a temperature input against a view-factor field."""
+    t = np.asarray(temperature, dtype=float)
+    if np.any(t < 0.0):
+        raise ValueError("temperature must be non-negative")
+    if t.ndim == 0:
+        return t
+    if t.ndim == 1:
+        if t.shape[0] != u.shape[0]:
             raise ValueError(
-                "1-D solar_panel_temperature_K must have length len(profile.u)"
+                "1-D temperature must match the orbit grid length"
             )
-        temperatures = temperatures[:, None, None]
-
+        t = t[:, None, None]
     try:
-        np.broadcast_shapes(temperatures.shape, profile.solar_panel_view.shape)
+        np.broadcast_shapes(t.shape, view.shape)
     except ValueError as exc:
         raise ValueError(
-            "solar_panel_temperature_K must be scalar, length len(profile.u), "
-            "or broadcastable to profile.solar_panel_view"
+            "temperature must be scalar, 1-D orbit trace, "
+            "or broadcastable to the view-factor field"
         ) from exc
-    return temperatures
+    return t
 
 
 def radiative_background(profile, *,
@@ -57,12 +57,16 @@ def radiative_background(profile, *,
                          j_ir=J_IR,
                          a_earth=A_ALB,
                          solar_panel_temperature_K=None,
-                         solar_panel_emittance=1.0):
+                         solar_panel_emittance=1.0,
+                         body_temperature=None,
+                         body_emittance=1.0):
     """Convert geometric loading factors into incident radiative background."""
     if not isinstance(profile, SurfaceLoadingProfile):
         raise TypeError("profile must be a SurfaceLoadingProfile instance")
     if solar_panel_emittance < 0.0 or solar_panel_emittance > 1.0:
         raise ValueError("solar_panel_emittance must lie in [0, 1]")
+    if body_emittance < 0.0 or body_emittance > 1.0:
+        raise ValueError("body_emittance must lie in [0, 1]")
 
     earth_ir = j_ir * profile.earth_view
     albedo = a_earth * s0 * profile.albedo_view
@@ -76,7 +80,9 @@ def radiative_background(profile, *,
             )
         solar_panel_ir = np.zeros_like(profile.solar_panel_view)
     else:
-        panel_temperature = _panel_temperature_field(profile, solar_panel_temperature_K)
+        panel_temperature = _broadcast_temperature(
+            profile.u, solar_panel_temperature_K, profile.solar_panel_view,
+        )
         solar_panel_ir = (
             solar_panel_emittance
             * SIGMA_SB
@@ -84,7 +90,18 @@ def radiative_background(profile, *,
             * profile.solar_panel_view
         )
 
-    total = earth_ir + albedo + solar + solar_panel_ir
+    if body_temperature is None:
+        body_ir = np.zeros_like(profile.other_structure_view)
+    else:
+        body_temp = _broadcast_temperature(
+            profile.u, body_temperature, profile.other_structure_view,
+        )
+        body_ir = (
+            body_emittance * SIGMA_SB * body_temp ** 4
+            * profile.other_structure_view
+        )
+
+    total = earth_ir + albedo + solar + solar_panel_ir + body_ir
     return SurfaceBackgroundProfile(
         surface_name=profile.surface_name,
         u=profile.u,
@@ -94,6 +111,7 @@ def radiative_background(profile, *,
         albedo=albedo,
         solar=solar,
         solar_panel_ir=solar_panel_ir,
+        body_ir=body_ir,
         total=total,
         eclipse=profile.eclipse,
     )

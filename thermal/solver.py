@@ -40,7 +40,8 @@ def _validate_material_properties(*, alpha_solar, epsilon):
 def _absorbed_flux(background, *, alpha_solar, epsilon):
     return (
         alpha_solar * (background.solar + background.albedo)
-        + epsilon * (background.earth_ir + background.solar_panel_ir)
+        + epsilon * (background.earth_ir + background.solar_panel_ir
+                     + background.body_ir)
     )
 
 
@@ -122,6 +123,42 @@ class SinkTemperatureProfile:
         return self.T_sink.mean(axis=(1, 2))
 
 
+@dataclass(frozen=True)
+class ShroudProfile:
+    """Environment and equivalent shroud temperature for a named surface.
+
+    T_env    : (q_ir / sigma)^0.25  — incident IR environment temperature
+    T_shroud : (q_abs / (eps * sigma))^0.25  — equivalent shroud temperature
+    """
+    surface_name: str
+    u: np.ndarray
+    width: float
+    height: float
+    T_env: np.ndarray
+    T_shroud: np.ndarray
+    eclipse: np.ndarray
+    alpha_solar: float
+    epsilon: float
+
+    def scalar(self, field='T_shroud', mode='radiative'):
+        """Reduce patch grid to one representative scalar per timestep.
+
+        Modes
+        -----
+        radiative : (mean(T**4))^0.25 — radiation-power-equivalent
+        mean      : arithmetic mean across patches
+        peak      : spatial maximum
+        """
+        data = getattr(self, field)
+        if mode == 'radiative':
+            return np.power(np.mean(data ** 4, axis=(1, 2)), 0.25)
+        if mode == 'mean':
+            return data.mean(axis=(1, 2))
+        if mode == 'peak':
+            return data.max(axis=(1, 2))
+        raise ValueError(f"unknown mode {mode!r}")
+
+
 def steady_state_temperature(background, *, alpha_solar, epsilon):
     """Compute per-patch steady-state temperature from a radiative background profile."""
     _validate_background(background)
@@ -195,7 +232,7 @@ def transient_temperature(bg_front, bg_back, *,
                           alpha_back, epsilon_back,
                           thermal_capacitance,
                           orbit_period,
-                          n_orbits=5,
+                          n_orbits=10,
                           tol=0.5):
     """Integrate a two-sided panel temperature history to periodic steady state."""
     _validate_paired_backgrounds(bg_front, bg_back)
@@ -243,6 +280,8 @@ def transient_temperature(bg_front, bg_back, *,
         axis=0,
         kind='linear',
         assume_sorted=True,
+        bounds_error=False,
+        fill_value=(q_periodic[0], q_periodic[-1]),
     )
 
     steady_initial = steady_state_temperature_two_sided(
@@ -272,6 +311,8 @@ def transient_temperature(bg_front, bg_back, *,
             y0,
             t_eval=t_eval,
             vectorized=False,
+            rtol=1e-6,
+            atol=1e-2,
         )
         if not solution.success:
             raise RuntimeError(f"transient_temperature integration failed: {solution.message}")
@@ -322,4 +363,41 @@ def effective_sink_temperature(background):
         height=background.height,
         T_sink=T_sink,
         eclipse=background.eclipse,
+    )
+
+
+def shroud_temperature(background, *, alpha_solar, epsilon):
+    """Compute environment and equivalent shroud temperatures.
+
+    T_env is the incident IR environment temperature (no material dependence).
+    T_shroud is the equivalent blackbody enclosure temperature that delivers
+    the same total absorbed flux to a surface with given alpha and epsilon.
+    """
+    _validate_background(background)
+    alpha_solar, epsilon = _validate_material_properties(
+        alpha_solar=alpha_solar, epsilon=epsilon,
+    )
+
+    q_ir = np.maximum(
+        background.earth_ir + background.solar_panel_ir + background.body_ir,
+        0.0,
+    )
+    q_absorbed = np.maximum(
+        _absorbed_flux(background, alpha_solar=alpha_solar, epsilon=epsilon),
+        0.0,
+    )
+
+    T_env = (q_ir / SIGMA_SB) ** 0.25
+    T_shroud = (q_absorbed / (epsilon * SIGMA_SB)) ** 0.25
+
+    return ShroudProfile(
+        surface_name=background.surface_name,
+        u=background.u,
+        width=background.width,
+        height=background.height,
+        T_env=T_env,
+        T_shroud=T_shroud,
+        eclipse=background.eclipse,
+        alpha_solar=alpha_solar,
+        epsilon=epsilon,
     )

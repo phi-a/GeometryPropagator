@@ -5,6 +5,7 @@ from collections.abc import Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .background import SurfaceBackgroundProfile
 from .solver import SurfaceThermalProfile
 
 
@@ -171,7 +172,58 @@ def plot_temperature_heatmap(ax, profile, *, k=None, selector='peak', title=None
     return image, k
 
 
+_FLUX_COMPONENTS = {
+    'earth_ir': ('Earth IR',     '#2ecc71'),
+    'albedo':   ('Albedo',       '#3498db'),
+    'solar':    ('Direct Solar', '#f39c12'),
+}
+
+
+def plot_flux_trace(ax, bg, *,
+                    components=('earth_ir', 'albedo', 'solar'),
+                    title=None, shade_eclipse=True):
+    """Plot mean ± min/max patch flux envelopes for selected components.
+
+    Parameters
+    ----------
+    ax : matplotlib Axes
+    bg : SurfaceBackgroundProfile
+    components : sequence of str — any of 'earth_ir', 'albedo', 'solar'
+    title : str, optional
+    shade_eclipse : bool
+    """
+    if not isinstance(bg, SurfaceBackgroundProfile):
+        raise TypeError("bg must be a SurfaceBackgroundProfile instance")
+
+    u_deg = np.degrees(np.asarray(bg.u, dtype=float))
+    eclipse = np.asarray(bg.eclipse, dtype=bool)
+
+    if shade_eclipse:
+        _shade_eclipse(ax, u_deg, eclipse)
+
+    for comp in components:
+        if comp not in _FLUX_COMPONENTS:
+            raise ValueError(f"unknown component {comp!r}; choose from {list(_FLUX_COMPONENTS)}")
+        label, color = _FLUX_COMPONENTS[comp]
+        data = getattr(bg, comp)
+        mean = data.mean(axis=(1, 2))
+        lo   = data.min(axis=(1, 2))
+        hi   = data.max(axis=(1, 2))
+        ax.fill_between(u_deg, lo, hi, color=color, alpha=0.18, linewidth=0)
+        ax.plot(u_deg, mean, lw=1.8, color=color, label=label)
+
+    ax.set_xlabel('argument of latitude u [deg]')
+    ax.set_ylabel('incident flux [W m⁻²]')
+    ax.set_title(
+        f'Incident flux — {bg.surface_name}' if title is None else title
+    )
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
+    return ax
+
+
 __all__ = [
     'plot_temperature_trace',
     'plot_temperature_heatmap',
+    'plot_flux_trace',
 ]

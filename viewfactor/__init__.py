@@ -34,3 +34,4 @@ from .propagator import (earth_loading_propagate, EarthLoadingProfile,  # noqa: 
                          panel_loading_propagate,
                          surface_loading_propagate, SurfaceLoadingProfile)
 from .sampling import hemisphere_directions                           # noqa: F401
+from .serialize import save_profiles, load_profiles                   # noqa: F401

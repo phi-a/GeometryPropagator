@@ -7,3 +7,4 @@ from .inspect import (surface_by_normal, face_frame_labels,          # noqa: F40
                       signed_axis_label, opposite_axis_label,
                       surface_body_role,
                       print_surface_summary, print_mounted_role_table)
+from .scene3d import scene, animate                                   # noqa: F401
