@@ -11,6 +11,9 @@ requires-python = ">=3.10"
 authors = [
   { name = "phi-a" }
 ]
+dependencies = [
+  "scipy>=1.10",
+]
 
 [tool.setuptools]
 packages = ["geometry", "geometry.CubeSat", "geometry.legacy", "viewfactor", "thermal", "tests"]

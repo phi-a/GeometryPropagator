@@ -1,7 +1,7 @@
 """CubeSat geometry builders and reusable body-fixed surface models."""
 
 from .surfaces import (CubeSatGeometry, RealizedGeometry, RectSurface,   # noqa: F401
-                       SurfaceNode, mount, rect_patch_grid)
+                       SurfaceNode, flip_surface, mount, rect_patch_grid)
 from .builder import build_6u_double_deployable
 from .inspect import (surface_by_normal, face_frame_labels,          # noqa: F401
                       signed_axis_label, opposite_axis_label,

@@ -15,6 +15,8 @@ class SurfaceBackgroundProfile:
     """Incident radiative background components for one named surface."""
     surface_name: str
     u: np.ndarray
+    width: float
+    height: float
     earth_ir: np.ndarray
     albedo: np.ndarray
     solar: np.ndarray
@@ -24,6 +26,30 @@ class SurfaceBackgroundProfile:
 
     def average_total(self):
         return self.total.mean(axis=(1, 2))
+
+
+def _panel_temperature_field(profile, solar_panel_temperature_K):
+    temperatures = np.asarray(solar_panel_temperature_K, dtype=float)
+    if np.any(temperatures < 0.0):
+        raise ValueError("solar_panel_temperature_K must be non-negative")
+
+    if temperatures.ndim == 0:
+        return temperatures
+    if temperatures.ndim == 1:
+        if temperatures.shape[0] != profile.u.shape[0]:
+            raise ValueError(
+                "1-D solar_panel_temperature_K must have length len(profile.u)"
+            )
+        temperatures = temperatures[:, None, None]
+
+    try:
+        np.broadcast_shapes(temperatures.shape, profile.solar_panel_view.shape)
+    except ValueError as exc:
+        raise ValueError(
+            "solar_panel_temperature_K must be scalar, length len(profile.u), "
+            "or broadcastable to profile.solar_panel_view"
+        ) from exc
+    return temperatures
 
 
 def radiative_background(profile, *,
@@ -37,8 +63,6 @@ def radiative_background(profile, *,
         raise TypeError("profile must be a SurfaceLoadingProfile instance")
     if solar_panel_emittance < 0.0 or solar_panel_emittance > 1.0:
         raise ValueError("solar_panel_emittance must lie in [0, 1]")
-    if solar_panel_temperature_K is not None and solar_panel_temperature_K < 0.0:
-        raise ValueError("solar_panel_temperature_K must be non-negative")
 
     earth_ir = j_ir * profile.earth_view
     albedo = a_earth * s0 * profile.albedo_view
@@ -52,10 +76,11 @@ def radiative_background(profile, *,
             )
         solar_panel_ir = np.zeros_like(profile.solar_panel_view)
     else:
+        panel_temperature = _panel_temperature_field(profile, solar_panel_temperature_K)
         solar_panel_ir = (
             solar_panel_emittance
             * SIGMA_SB
-            * float(solar_panel_temperature_K) ** 4
+            * panel_temperature ** 4
             * profile.solar_panel_view
         )
 
@@ -63,6 +88,8 @@ def radiative_background(profile, *,
     return SurfaceBackgroundProfile(
         surface_name=profile.surface_name,
         u=profile.u,
+        width=profile.width,
+        height=profile.height,
         earth_ir=earth_ir,
         albedo=albedo,
         solar=solar,

@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from .surfaces import CubeSatGeometry, RectSurface, SurfaceNode
+from .surfaces import CubeSatGeometry, RectSurface, SurfaceNode, flip_surface
 
 
 def build_6u_double_deployable(*,
@@ -110,9 +110,43 @@ def build_6u_double_deployable(*,
         patch_shape=bus_patch_shape,
     )
 
+    def add_deployable_pair(surface, *,
+                            parent=None,
+                            hinge_origin=None,
+                            hinge_axis=None,
+                            state_key=None,
+                            default_angle=0.0):
+        nodes.append(SurfaceNode(
+            surface=surface,
+            parent=parent,
+            hinge_origin=hinge_origin,
+            hinge_axis=hinge_axis,
+            state_key=state_key,
+            default_angle=default_angle,
+        ))
+        nodes.append(SurfaceNode(
+            surface=flip_surface(
+                surface,
+                tags=(
+                    'deployable',
+                    'solar_panel_back',
+                    'solar_array',
+                    *tuple(
+                        tag for tag in surface.tags
+                        if tag not in {'deployable', 'solar_panel', 'solar_array'}
+                    ),
+                ),
+            ),
+            parent=parent,
+            hinge_origin=hinge_origin,
+            hinge_axis=hinge_axis,
+            state_key=state_key,
+            default_angle=default_angle,
+        ))
+
     # Port-side inner wing, stowed against +X and deployed +90 deg into +Y.
-    nodes.append(SurfaceNode(
-        surface=RectSurface(
+    add_deployable_pair(
+        RectSurface(
             name='wing_port_inner',
             center=np.array([0.5 * bus_x, 0.5 * bus_y - 0.5 * leaf_y, 0.0]),
             normal=np.array([1.0, 0.0, 0.0]),
@@ -120,17 +154,17 @@ def build_6u_double_deployable(*,
             width=leaf_z,
             height=leaf_y,
             patch_shape=wing_patch_shape,
-            tags=('deployable', 'solar_panel', 'port', 'inner'),
+            tags=('deployable', 'solar_panel', 'solar_array', 'port', 'inner'),
         ),
         hinge_origin=np.array([0.5 * bus_x, 0.5 * bus_y, 0.0]),
         hinge_axis=np.array([0.0, 0.0, 1.0]),
         state_key='wing_port_inner_angle',
         default_angle=math.pi / 2.0,
-    ))
+    )
 
     # Outer leaf is defined in the realized frame of the inner leaf.
-    nodes.append(SurfaceNode(
-        surface=RectSurface(
+    add_deployable_pair(
+        RectSurface(
             name='wing_port_outer',
             center=np.array([0.0, 0.0, 0.0]),
             normal=np.array([0.0, 0.0, -1.0]),
@@ -138,18 +172,18 @@ def build_6u_double_deployable(*,
             width=leaf_z,
             height=leaf_y,
             patch_shape=wing_patch_shape,
-            tags=('deployable', 'solar_panel', 'port', 'outer'),
+            tags=('deployable', 'solar_panel', 'solar_array', 'port', 'outer'),
         ),
         parent='wing_port_inner',
         hinge_origin=np.array([0.0, 0.5 * leaf_y, 0.0]),
         hinge_axis=np.array([1.0, 0.0, 0.0]),
         state_key='wing_port_outer_angle',
         default_angle=math.pi,
-    ))
+    )
 
     # Starboard-side inner wing, deployed -90 deg so both wings face +Y.
-    nodes.append(SurfaceNode(
-        surface=RectSurface(
+    add_deployable_pair(
+        RectSurface(
             name='wing_starboard_inner',
             center=np.array([-0.5 * bus_x, 0.5 * bus_y - 0.5 * leaf_y, 0.0]),
             normal=np.array([-1.0, 0.0, 0.0]),
@@ -157,16 +191,16 @@ def build_6u_double_deployable(*,
             width=leaf_z,
             height=leaf_y,
             patch_shape=wing_patch_shape,
-            tags=('deployable', 'solar_panel', 'starboard', 'inner'),
+            tags=('deployable', 'solar_panel', 'solar_array', 'starboard', 'inner'),
         ),
         hinge_origin=np.array([-0.5 * bus_x, 0.5 * bus_y, 0.0]),
         hinge_axis=np.array([0.0, 0.0, 1.0]),
         state_key='wing_starboard_inner_angle',
         default_angle=-math.pi / 2.0,
-    ))
+    )
 
-    nodes.append(SurfaceNode(
-        surface=RectSurface(
+    add_deployable_pair(
+        RectSurface(
             name='wing_starboard_outer',
             center=np.array([0.0, 0.0, 0.0]),
             normal=np.array([0.0, 0.0, -1.0]),
@@ -174,14 +208,14 @@ def build_6u_double_deployable(*,
             width=leaf_z,
             height=leaf_y,
             patch_shape=wing_patch_shape,
-            tags=('deployable', 'solar_panel', 'starboard', 'outer'),
+            tags=('deployable', 'solar_panel', 'solar_array', 'starboard', 'outer'),
         ),
         parent='wing_starboard_inner',
         hinge_origin=np.array([0.0, -0.5 * leaf_y, 0.0]),
         hinge_axis=np.array([1.0, 0.0, 0.0]),
         state_key='wing_starboard_outer_angle',
         default_angle=-math.pi,
-    ))
+    )
 
     return CubeSatGeometry(
         nodes=tuple(nodes),

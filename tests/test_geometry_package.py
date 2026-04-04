@@ -1,8 +1,12 @@
 import math
 import unittest
+import warnings
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import numpy as np
 
 from geometry import (LVLHFixed, Orbit, SlewModeSwitch, SO3,
@@ -10,7 +14,8 @@ from geometry import (LVLHFixed, Orbit, SlewModeSwitch, SO3,
                       mount,
                       propagate, thermal_propagate)
 from geometry.CubeSat import (CubeSatGeometry, RealizedGeometry, RectSurface,
-                              SurfaceNode, surface_body_role, surface_by_normal)
+                              SurfaceNode, flip_surface, surface_body_role,
+                              surface_by_normal)
 from geometry.sampling import propagation_grid
 from geometry.legacy import propagate as legacy_propagate
 from geometry.legacy import thermal_propagate as legacy_thermal_propagate
@@ -19,7 +24,12 @@ from viewfactor import (EarthDiskQuadrature, RectangularPanel, panel_loading_pro
                         hemisphere_group_view, SurfaceLoadingProfile,
                         surface_loading_propagate)
 import viewfactor.occlusion as occlusion_impl
-from thermal import SIGMA_SB, radiative_background
+from thermal import (SIGMA_SB, SurfaceBackgroundProfile, SurfaceThermalProfile,
+                     effective_sink_temperature, plot_temperature_heatmap,
+                     plot_temperature_trace, radiative_background,
+                     steady_state_temperature,
+                     steady_state_temperature_two_sided,
+                     transient_temperature)
 
 
 SGR_A = (math.radians(266.4168), math.radians(-29.0078))
@@ -213,7 +223,7 @@ def _scalar_surface_loading_reference(realized, surface_name, orbit, law, *,
     static_views = _scalar_hemisphere_group_view(
         realized,
         surface,
-        [('solar_panel', 'solar_panel_view')],
+        [('solar_array', 'solar_panel_view')],
         n_az=hemi_n_az,
         n_el=hemi_n_el,
         elevation_min_deg=hemi_elevation_min_deg,
@@ -259,6 +269,8 @@ def _scalar_surface_loading_reference(realized, surface_name, orbit, law, *,
     return SurfaceLoadingProfile(
         surface_name=surface_name,
         u=u_arr,
+        width=surface.width,
+        height=surface.height,
         earth_view=earth_view,
         albedo_view=albedo_view,
         solar_view=solar_view,
@@ -266,6 +278,62 @@ def _scalar_surface_loading_reference(realized, surface_name, orbit, law, *,
         other_structure_view=np.repeat(static_views['other_structure_view'][None, :, :], n_samp, axis=0),
         space_view=np.repeat(static_views['space_view'][None, :, :], n_samp, axis=0),
         eclipse=eclipse,
+    )
+
+
+def _sample_thermal_profile(*, surface_name='source', width=0.4, height=0.2,
+                            u=None, eclipse=None, temperature=None):
+    if u is None:
+        u = np.array([0.0, 1.0, 2.0], dtype=float)
+    if eclipse is None:
+        eclipse = np.array([False, True, False], dtype=bool)
+    if temperature is None:
+        temperature = np.array([
+            [[280.0, 282.0], [281.0, 283.0]],
+            [[290.0, 295.0], [292.0, 294.0]],
+            [[285.0, 287.0], [286.0, 288.0]],
+        ])
+
+    q_absorbed = np.maximum(temperature, 0.0)
+    return SurfaceThermalProfile(
+        surface_name=surface_name,
+        u=np.asarray(u, dtype=float),
+        width=width,
+        height=height,
+        temperature=np.asarray(temperature, dtype=float),
+        q_absorbed=np.asarray(q_absorbed, dtype=float),
+        eclipse=np.asarray(eclipse, dtype=bool),
+        alpha_solar=0.8,
+        epsilon=0.9,
+    )
+
+
+def _sample_background_profile(*, surface_name='source', width=0.4, height=0.2,
+                               u=None, eclipse=None,
+                               earth_ir=None, albedo=None, solar=None, solar_panel_ir=None):
+    if u is None:
+        u = np.array([0.0, 1.0, 2.0], dtype=float)
+    if eclipse is None:
+        eclipse = np.array([False, True, False], dtype=bool)
+    shape = (len(u), 2, 3)
+    earth_ir = np.zeros(shape) if earth_ir is None else np.asarray(earth_ir, dtype=float)
+    albedo = np.zeros(shape) if albedo is None else np.asarray(albedo, dtype=float)
+    solar = np.zeros(shape) if solar is None else np.asarray(solar, dtype=float)
+    solar_panel_ir = (
+        np.zeros(shape) if solar_panel_ir is None else np.asarray(solar_panel_ir, dtype=float)
+    )
+    total = earth_ir + albedo + solar + solar_panel_ir
+    return SurfaceBackgroundProfile(
+        surface_name=surface_name,
+        u=np.asarray(u, dtype=float),
+        width=width,
+        height=height,
+        earth_ir=earth_ir,
+        albedo=albedo,
+        solar=solar,
+        solar_panel_ir=solar_panel_ir,
+        total=total,
+        eclipse=np.asarray(eclipse, dtype=bool),
     )
 
 
@@ -315,19 +383,25 @@ class GeometryPackageTests(unittest.TestCase):
         cubesat = build_6u_double_deployable()
         realized = cubesat.realize()
 
-        self.assertEqual(len(realized.surfaces), 10)
+        self.assertEqual(len(realized.surfaces), 14)
         self.assertIn('wing_port_inner', realized.names())
         self.assertIn('wing_starboard_outer', realized.names())
+        self.assertIn('wing_port_inner_back', realized.names())
+        self.assertIn('wing_starboard_outer_back', realized.names())
 
         port_inner = realized.by_name('wing_port_inner')
         port_outer = realized.by_name('wing_port_outer')
         star_inner = realized.by_name('wing_starboard_inner')
         star_outer = realized.by_name('wing_starboard_outer')
+        port_inner_back = realized.by_name('wing_port_inner_back')
 
         self.assertTrue(np.allclose(port_inner.normal, [0.0, 1.0, 0.0], atol=1e-9))
         self.assertTrue(np.allclose(port_outer.normal, [0.0, 1.0, 0.0], atol=1e-9))
         self.assertTrue(np.allclose(star_inner.normal, [0.0, 1.0, 0.0], atol=1e-9))
         self.assertTrue(np.allclose(star_outer.normal, [0.0, 1.0, 0.0], atol=1e-9))
+        self.assertTrue(np.allclose(port_inner_back.normal, [0.0, -1.0, 0.0], atol=1e-9))
+        self.assertTrue(np.allclose(port_inner_back.center, port_inner.center, atol=1e-9))
+        self.assertTrue(np.allclose(port_inner_back.u_axis, port_inner.u_axis, atol=1e-9))
 
         self.assertAlmostEqual(cubesat.metadata['leaf_y_m'], 0.2263)
         self.assertAlmostEqual(cubesat.metadata['leaf_z_m'], 0.3405)
@@ -335,9 +409,35 @@ class GeometryPackageTests(unittest.TestCase):
         self.assertAlmostEqual(port_inner.width, 0.3405)
 
         self.assertEqual(len(realized.by_tag('solar_panel')), 4)
+        self.assertEqual(len(realized.by_tag('solar_panel_back')), 4)
+        self.assertEqual(len(realized.by_tag('solar_array')), 8)
 
         self.assertGreater(port_outer.center[0], port_inner.center[0])
         self.assertLess(star_outer.center[0], star_inner.center[0])
+
+    def test_flip_surface_creates_back_face_with_shared_u_axis(self):
+        surface = RectSurface(
+            name='panel',
+            center=np.array([1.0, 2.0, 3.0]),
+            normal=np.array([0.0, 0.0, 1.0]),
+            u_axis=np.array([1.0, 0.0, 0.0]),
+            width=0.4,
+            height=0.2,
+            patch_shape=(3, 2),
+            tags=('solar_panel', 'solar_array'),
+        )
+
+        back = flip_surface(
+            surface,
+            tags=('solar_panel_back', 'solar_array'),
+        )
+
+        self.assertEqual(back.name, 'panel_back')
+        self.assertTrue(np.allclose(back.center, surface.center, atol=1e-12))
+        self.assertTrue(np.allclose(back.normal, -surface.normal, atol=1e-12))
+        self.assertTrue(np.allclose(back.u_axis, surface.u_axis, atol=1e-12))
+        self.assertEqual(back.patch_shape, surface.patch_shape)
+        self.assertEqual(back.tags, ('solar_panel_back', 'solar_array'))
 
     def test_builder_accepts_explicit_leaf_dimensions(self):
         cubesat = build_6u_double_deployable(leaf_y=0.180, leaf_z=0.300)
@@ -591,13 +691,13 @@ class GeometryPackageTests(unittest.TestCase):
         self.assertTrue(np.allclose(value, reference, atol=1e-12))
 
     def test_hemisphere_group_view_uses_first_matching_tag_order(self):
-        geometry = _simple_geometry(blocker_tags=('solar_panel', 'deployable'))
+        geometry = _simple_geometry(blocker_tags=('solar_array', 'deployable'))
         realized = geometry.realize()
 
         grouped = hemisphere_group_view(
             realized,
             'source',
-            [('deployable', 'deployable_view'), ('solar_panel', 'solar_panel_view')],
+            [('deployable', 'deployable_view'), ('solar_array', 'solar_panel_view')],
             n_az=120,
             n_el=60,
         )
@@ -612,7 +712,7 @@ class GeometryPackageTests(unittest.TestCase):
         grouped = hemisphere_group_view(
             realized,
             'source',
-            [('solar_panel', 'solar_panel_view')],
+            [('solar_array', 'solar_panel_view')],
             n_az=160,
             n_el=80,
         )
@@ -631,20 +731,44 @@ class GeometryPackageTests(unittest.TestCase):
         grouped = hemisphere_group_view(
             realized,
             'bus_+Y',
-            [('solar_panel', 'solar_panel_view')],
+            [('solar_array', 'solar_panel_view')],
             n_az=20,
             n_el=10,
         )
         reference = _scalar_hemisphere_group_view(
             realized,
             'bus_+Y',
-            [('solar_panel', 'solar_panel_view')],
+            [('solar_array', 'solar_panel_view')],
             n_az=20,
             n_el=10,
         )
 
         for key in ('solar_panel_view', 'other_structure_view', 'space_view'):
             self.assertTrue(np.allclose(grouped[key], reference[key], atol=1e-12))
+
+    def test_solar_array_grouping_matches_coplanar_front_surface_geometry(self):
+        realized = build_6u_double_deployable(bus_patch_shape=(2, 2)).realize()
+
+        grouped_front_only = hemisphere_group_view(
+            realized,
+            'bus_+Y',
+            [('solar_panel', 'solar_panel_view')],
+            n_az=20,
+            n_el=10,
+        )
+        grouped_front_and_back = hemisphere_group_view(
+            realized,
+            'bus_+Y',
+            [('solar_array', 'solar_panel_view')],
+            n_az=20,
+            n_el=10,
+        )
+
+        self.assertTrue(np.allclose(
+            grouped_front_and_back['solar_panel_view'],
+            grouped_front_only['solar_panel_view'],
+            atol=1e-12,
+        ))
 
     def test_surface_loading_propagate_keeps_warm_views_static(self):
         orbit = _sample_orbit()
@@ -672,7 +796,7 @@ class GeometryPackageTests(unittest.TestCase):
 
     def test_surface_loading_propagate_direct_solar_occlusion(self):
         orbit = _sample_orbit()
-        blocked_geometry = _simple_geometry(blocker_tags=('solar_panel',)).realize()
+        blocked_geometry = _simple_geometry(blocker_tags=('solar_array',)).realize()
         clear_geometry = _simple_geometry(include_blocker=False).realize()
 
         blocked = surface_loading_propagate(
@@ -786,6 +910,8 @@ class GeometryPackageTests(unittest.TestCase):
         profile = SurfaceLoadingProfile(
             surface_name='source',
             u=np.array([0.0, 1.0]),
+            width=1.0,
+            height=1.0,
             earth_view=np.array([[[0.5]], [[0.25]]]),
             albedo_view=np.array([[[0.2]], [[0.1]]]),
             solar_view=np.array([[[0.3]], [[0.0]]]),
@@ -815,6 +941,8 @@ class GeometryPackageTests(unittest.TestCase):
         cold_profile = SurfaceLoadingProfile(
             surface_name='source',
             u=np.array([0.0]),
+            width=1.0,
+            height=1.0,
             earth_view=np.zeros((1, 1, 1)),
             albedo_view=np.zeros((1, 1, 1)),
             solar_view=np.zeros((1, 1, 1)),
@@ -826,6 +954,8 @@ class GeometryPackageTests(unittest.TestCase):
         warm_profile = SurfaceLoadingProfile(
             surface_name='source',
             u=np.array([0.0]),
+            width=1.0,
+            height=1.0,
             earth_view=np.zeros((1, 1, 1)),
             albedo_view=np.zeros((1, 1, 1)),
             solar_view=np.zeros((1, 1, 1)),
@@ -840,6 +970,289 @@ class GeometryPackageTests(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             radiative_background(warm_profile)
+
+    def test_radiative_background_accepts_time_trace_panel_temperature(self):
+        profile = SurfaceLoadingProfile(
+            surface_name='source',
+            u=np.array([0.0, 1.0]),
+            width=1.0,
+            height=1.0,
+            earth_view=np.zeros((2, 1, 1)),
+            albedo_view=np.zeros((2, 1, 1)),
+            solar_view=np.zeros((2, 1, 1)),
+            solar_panel_view=np.array([[[0.2]], [[0.4]]]),
+            other_structure_view=np.zeros((2, 1, 1)),
+            space_view=np.ones((2, 1, 1)),
+            eclipse=np.array([False, True]),
+        )
+
+        scalar_background = radiative_background(
+            profile,
+            solar_panel_temperature_K=np.array([300.0, 320.0]),
+            solar_panel_emittance=0.8,
+        )
+        explicit_background = radiative_background(
+            profile,
+            solar_panel_temperature_K=np.array([[[300.0]], [[320.0]]]),
+            solar_panel_emittance=0.8,
+        )
+
+        self.assertTrue(np.allclose(scalar_background.solar_panel_ir, explicit_background.solar_panel_ir))
+
+        with self.assertRaises(ValueError):
+            radiative_background(profile, solar_panel_temperature_K=np.array([300.0]))
+        with self.assertRaises(ValueError):
+            radiative_background(profile, solar_panel_temperature_K=np.array([-1.0, 300.0]))
+
+    def test_surface_loading_propagate_records_surface_extents(self):
+        orbit = _sample_orbit()
+        realized = build_6u_double_deployable(bus_patch_shape=(2, 2)).realize()
+        law = SlewModeSwitch(TargetTracking(*SGR_A), SunTracking(), slew_rate_deg_s=0.5)
+
+        profile = surface_loading_propagate(
+            realized,
+            'bus_+Y',
+            orbit,
+            law,
+            n=8,
+            n_mu=4,
+            n_az=12,
+            hemi_n_az=16,
+            hemi_n_el=8,
+        )
+
+        surface = realized.by_name('bus_+Y')
+        self.assertEqual(profile.width, surface.width)
+        self.assertEqual(profile.height, surface.height)
+
+    def test_thermal_profiles_preserve_surface_extents(self):
+        profile = SurfaceLoadingProfile(
+            surface_name='source',
+            u=np.array([0.0, 1.0]),
+            width=0.4,
+            height=0.2,
+            earth_view=np.array([[[0.5]], [[0.25]]]),
+            albedo_view=np.array([[[0.2]], [[0.1]]]),
+            solar_view=np.array([[[0.3]], [[0.0]]]),
+            solar_panel_view=np.array([[[0.1]], [[0.1]]]),
+            other_structure_view=np.zeros((2, 1, 1)),
+            space_view=np.ones((2, 1, 1)),
+            eclipse=np.array([False, True]),
+        )
+
+        background = radiative_background(
+            profile,
+            solar_panel_temperature_K=300.0,
+            solar_panel_emittance=0.8,
+        )
+        thermal_profile = steady_state_temperature(
+            background,
+            alpha_solar=0.8,
+            epsilon=0.9,
+        )
+        sink_profile = effective_sink_temperature(background)
+
+        self.assertEqual(background.width, profile.width)
+        self.assertEqual(background.height, profile.height)
+        self.assertEqual(thermal_profile.width, profile.width)
+        self.assertEqual(thermal_profile.height, profile.height)
+        self.assertEqual(sink_profile.width, profile.width)
+        self.assertEqual(sink_profile.height, profile.height)
+
+    def test_two_sided_steady_state_aligns_back_face_patch_rows(self):
+        front = _sample_background_profile(
+            solar=np.array([
+                [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]],
+                [[6.0, 5.0, 4.0], [3.0, 2.0, 1.0]],
+            ]),
+            u=np.array([0.0, 1.0]),
+            eclipse=np.array([False, True]),
+        )
+        back = _sample_background_profile(
+            solar=np.array([
+                [[10.0, 20.0, 30.0], [40.0, 50.0, 60.0]],
+                [[60.0, 50.0, 40.0], [30.0, 20.0, 10.0]],
+            ]),
+            u=np.array([0.0, 1.0]),
+            eclipse=np.array([False, True]),
+        )
+
+        profile = steady_state_temperature_two_sided(
+            front,
+            back,
+            alpha_front=1.0,
+            epsilon_front=0.5,
+            alpha_back=1.0,
+            epsilon_back=0.5,
+        )
+        expected_q = front.solar + np.flip(back.solar, axis=1)
+
+        self.assertTrue(np.allclose(profile.q_absorbed, expected_q))
+
+    def test_two_sided_steady_state_rejects_mismatched_backgrounds(self):
+        front = _sample_background_profile()
+        back = _sample_background_profile(u=np.array([0.0, 1.1, 2.0]))
+
+        with self.assertRaises(ValueError):
+            steady_state_temperature_two_sided(
+                front,
+                back,
+                alpha_front=0.6,
+                epsilon_front=0.8,
+                alpha_back=0.2,
+                epsilon_back=0.9,
+            )
+
+    def test_transient_temperature_matches_constant_steady_state(self):
+        front = _sample_background_profile(solar=np.ones((3, 2, 3)) * 100.0)
+        back = _sample_background_profile(solar=np.ones((3, 2, 3)) * 50.0)
+
+        steady = steady_state_temperature_two_sided(
+            front,
+            back,
+            alpha_front=1.0,
+            epsilon_front=0.5,
+            alpha_back=1.0,
+            epsilon_back=0.5,
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            transient = transient_temperature(
+                front,
+                back,
+                alpha_front=1.0,
+                epsilon_front=0.5,
+                alpha_back=1.0,
+                epsilon_back=0.5,
+                thermal_capacitance=3600.0,
+                orbit_period=5400.0,
+                n_orbits=3,
+                tol=1e-6,
+            )
+
+        self.assertFalse(caught)
+        self.assertTrue(np.allclose(transient.temperature, steady.temperature, atol=1e-6))
+
+    def test_transient_temperature_warns_when_convergence_limit_is_hit(self):
+        front = _sample_background_profile(
+            solar=np.array([
+                [[100.0, 120.0, 140.0], [160.0, 180.0, 200.0]],
+                [[0.0, 10.0, 20.0], [30.0, 40.0, 50.0]],
+                [[80.0, 90.0, 100.0], [110.0, 120.0, 130.0]],
+            ])
+        )
+        back = _sample_background_profile(
+            solar=np.array([
+                [[20.0, 30.0, 40.0], [50.0, 60.0, 70.0]],
+                [[10.0, 5.0, 0.0], [15.0, 10.0, 5.0]],
+                [[25.0, 35.0, 45.0], [55.0, 65.0, 75.0]],
+            ])
+        )
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            profile = transient_temperature(
+                front,
+                back,
+                alpha_front=1.0,
+                epsilon_front=0.5,
+                alpha_back=1.0,
+                epsilon_back=0.5,
+                thermal_capacitance=1.0e6,
+                orbit_period=5400.0,
+                n_orbits=1,
+                tol=1e-6,
+            )
+
+        self.assertEqual(profile.temperature.shape, front.total.shape)
+        self.assertTrue(any(issubclass(item.category, RuntimeWarning) for item in caught))
+
+    def test_plot_temperature_trace_accepts_single_profile(self):
+        profile = _sample_thermal_profile()
+        fig, ax = plt.subplots()
+        try:
+            returned_ax = plot_temperature_trace(ax, profile)
+            self.assertIs(returned_ax, ax)
+            self.assertEqual(ax.get_ylabel(), 'temperature [K]')
+            self.assertEqual(len(ax.lines), 1)
+        finally:
+            plt.close(fig)
+
+    def test_plot_temperature_trace_accepts_multiple_profiles(self):
+        hot = _sample_thermal_profile(surface_name='hot')
+        cold = _sample_thermal_profile(
+            surface_name='cold',
+            temperature=np.array([
+                [[260.0, 262.0], [261.0, 263.0]],
+                [[270.0, 275.0], [272.0, 274.0]],
+                [[265.0, 267.0], [266.0, 268.0]],
+            ]),
+        )
+        fig, ax = plt.subplots()
+        try:
+            plot_temperature_trace(ax, [hot, cold])
+            self.assertEqual(len(ax.lines), 2)
+        finally:
+            plt.close(fig)
+
+    def test_plot_temperature_trace_rejects_mismatched_u(self):
+        first = _sample_thermal_profile()
+        second = _sample_thermal_profile(u=np.array([0.0, 1.0, 2.1]))
+        fig, ax = plt.subplots()
+        try:
+            with self.assertRaises(ValueError):
+                plot_temperature_trace(ax, [first, second])
+        finally:
+            plt.close(fig)
+
+    def test_plot_temperature_trace_rejects_mismatched_eclipse(self):
+        first = _sample_thermal_profile()
+        second = _sample_thermal_profile(eclipse=np.array([False, False, False]))
+        fig, ax = plt.subplots()
+        try:
+            with self.assertRaises(ValueError):
+                plot_temperature_trace(ax, [first, second])
+        finally:
+            plt.close(fig)
+
+    def test_plot_temperature_heatmap_honors_explicit_k(self):
+        profile = _sample_thermal_profile()
+        fig, ax = plt.subplots()
+        try:
+            image, k = plot_temperature_heatmap(ax, profile, k=2)
+            self.assertEqual(k, 2)
+            self.assertTrue(np.allclose(np.asarray(image.get_array()), profile.temperature[2]))
+        finally:
+            plt.close(fig)
+
+    def test_plot_temperature_heatmap_selectors_choose_expected_timestep(self):
+        profile = _sample_thermal_profile(
+            temperature=np.array([
+                [[270.0, 271.0], [272.0, 273.0]],
+                [[290.0, 291.0], [292.0, 293.0]],
+                [[280.0, 281.0], [282.0, 283.0]],
+            ]),
+        )
+        fig, axs = plt.subplots(1, 3)
+        try:
+            _, peak_k = plot_temperature_heatmap(axs[0], profile, selector='peak')
+            _, mean_k = plot_temperature_heatmap(axs[1], profile, selector='mean')
+            _, cold_k = plot_temperature_heatmap(axs[2], profile, selector=np.argmin)
+            self.assertEqual(peak_k, 1)
+            self.assertEqual(mean_k, 1)
+            self.assertEqual(cold_k, 0)
+        finally:
+            plt.close(fig)
+
+    def test_plot_temperature_heatmap_requires_surface_extents(self):
+        profile = _sample_thermal_profile(width=None)
+        fig, ax = plt.subplots()
+        try:
+            with self.assertRaises(ValueError):
+                plot_temperature_heatmap(ax, profile)
+        finally:
+            plt.close(fig)
 
 
 if __name__ == '__main__':

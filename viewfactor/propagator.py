@@ -51,6 +51,8 @@ class SurfaceLoadingProfile:
     """Patch-resolved named-surface geometric loading over one orbit."""
     surface_name: str
     u: np.ndarray
+    width: float
+    height: float
     earth_view: np.ndarray
     albedo_view: np.ndarray
     solar_view: np.ndarray
@@ -244,7 +246,7 @@ def surface_loading_propagate(realized, surface_name, orbit, law, *,
     static_views = _group_view_from_prepared(
         surface,
         prepared,
-        [('solar_panel', 'solar_panel_view')],
+        [('solar_array', 'solar_panel_view')],
         hemi_dirs_body,
         hemi_cosine_weights,
         eps=1e-9,
@@ -319,6 +321,8 @@ def surface_loading_propagate(realized, surface_name, orbit, law, *,
     return SurfaceLoadingProfile(
         surface_name=surface_name,
         u=u_arr,
+        width=float(surface.width),
+        height=float(surface.height),
         earth_view=earth_view,
         albedo_view=albedo_view,
         solar_view=solar_view,

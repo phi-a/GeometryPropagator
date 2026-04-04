@@ -25,6 +25,7 @@ Implemented now:
 - finite-rate mode-switch slews
 - body-fixed `CubeSat` geometry builders
 - hierarchical deployable-panel realization from hinge states
+- explicit front and back surfaces for deployable solar-panel wings
 - optional rigid geometry-frame -> body-frame mount transforms
 - `mount(...)` helper for self-documenting axis-to-axis mounting
 - stable surface identities preserved through realization and mount
@@ -36,6 +37,10 @@ Implemented now:
 - face-level directional masking
 - patch-resolved rectangular radiator panels
 - thermal background consumers built on top of geometric view products
+- steady-state single-sided and two-sided patch temperature solvers
+- transient two-sided solar-panel temperature solver
+- effective sink-temperature products
+- standalone 2-D thermal plots built directly on `SurfaceThermalProfile`
 - notebook demos for geometry realization and body-face loading analysis
 - legacy scalar flat-plate models retained under `geometry.legacy`
 
@@ -68,6 +73,8 @@ GeometryPropagator/
 - thermal/
   - __init__.py
   - background.py
+  - solver.py
+  - plots.py
 - tests/
 - docs/
 - run_geometry.ipynb
@@ -92,7 +99,7 @@ Owns geometric visibility and exchange only.
 
 Examples:
 - Earth view factor
-- solar-panel view
+- solar-array view (front and back wing faces grouped for reradiation)
 - other-structure view
 - deep-space visibility
 - spacecraft self-occlusion
@@ -107,6 +114,9 @@ Examples:
 - albedo background
 - solar background
 - combined radiative background products for later thermal use
+- single-sided steady-state patch temperature
+- two-sided and transient solar-panel temperature
+- thermal profile trace and heatmap plots
 
 ## Realized Geometry Handoff
 
@@ -148,7 +158,7 @@ from geometry import (
     mount,
 )
 from geometry.CubeSat.inspect import surface_by_normal
-from thermal import radiative_background
+from thermal import radiative_background, steady_state_temperature
 from viewfactor import surface_loading_propagate
 
 builder = build_6u_double_deployable()
@@ -187,6 +197,11 @@ background = radiative_background(
     solar_panel_temperature_K=300.0,
     solar_panel_emittance=0.9,
 )
+thermal_profile = steady_state_temperature(
+    background,
+    alpha_solar=0.8,
+    epsilon=0.9,
+)
 ```
 
 ## Notebook Workflow
@@ -195,13 +210,17 @@ background = radiative_background(
 - build the default 6U double-deployable geometry
 - choose mechanism state and body mount with `mount(...)`
 - inspect the mounted role table and 3D geometry with body axes
+- confirm the saved artifact now includes both solar-panel cell sides and panel backs
 - save `outputs/spacecraft.json`
 
 `background.ipynb`
 - load `outputs/spacecraft.json`
 - resolve body-role faces by realized normal
-- run `surface_loading_propagate(...)`
-- inspect Earth-only view, solar-panel view, and total background
+- propagate front and back solar-panel surfaces separately
+- solve a shared transient temperature for each wing using the two-sided panel model
+- feed the bus radiators from the area-weighted mean solar-array temperature trace
+- use `solar_panel_temperature_K=0` inside the panel solve itself as the current first-pass approximation
+- inspect Earth-only view, solar-panel view, total background, and two-sided panel temperature
 - animate the orbit progression sample-by-sample at `24 fps`
 
 `run_geometry.ipynb`

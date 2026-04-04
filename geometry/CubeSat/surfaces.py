@@ -162,6 +162,30 @@ def rect_patch_grid(width, height, nx, ny):
     return np.meshgrid(x, y, indexing='xy')
 
 
+def flip_surface(surface, *, name=None, tags=None):
+    """Return the co-planar back face of a rectangular surface.
+
+    The returned surface keeps the same in-plane ``u`` direction so front and
+    back local plots use the same surface-``u`` convention. Because the normal
+    flips, the derived ``v`` direction flips, and corresponding back-face patch
+    grids align with front-face grids after reversing the patch-row axis.
+    """
+    if not isinstance(surface, RectSurface):
+        raise TypeError("surface must be a RectSurface instance")
+
+    return RectSurface(
+        name=surface.name + '_back' if name is None else str(name),
+        center=surface.center.copy(),
+        normal=-surface.normal,
+        u_axis=surface.u_axis.copy(),
+        width=surface.width,
+        height=surface.height,
+        two_sided=surface.two_sided,
+        patch_shape=surface.patch_shape,
+        tags=surface.tags if tags is None else tuple(tags),
+    )
+
+
 def _surface_to_dict(surface):
     return {
         'name': surface.name,
