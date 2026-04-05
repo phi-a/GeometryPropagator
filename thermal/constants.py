@@ -78,8 +78,9 @@ SOLAR_PANEL_CELL_EPSILON     = SOLAR_CELL.epsilon                              #
 # Two brackets are used to bound the thermal response:
 #   HOT  — Clear-hard Anodised AA7075 T6 backplate (high absorptivity / high emissivity)
 #   COLD — Surtec 650 chromate conversion coating   (low absorptivity / very low emissivity)
-SOLAR_PANEL_BACK_HOT  = CLEAR_HARD_ANODISED   # α=0.62  ε=0.83  (nominal / hot case)
-SOLAR_PANEL_BACK_COLD = SURTEC_650            # α=0.16  ε=0.04  (cold case bracket)
+
+SOLAR_PANEL_BACK_HOT  = SURTEC_650                     # α=0.62  ε=0.83  (nominal / hot case)
+SOLAR_PANEL_BACK_COLD = CLEAR_HARD_ANODISED            # α=0.16  ε=0.04  (cold case bracket)
 
 # Convenience scalars kept for backward compatibility (hot bracket values).
 SOLAR_PANEL_BACK_ALPHA_SOLAR = SOLAR_PANEL_BACK_HOT.alpha    # 0.62
