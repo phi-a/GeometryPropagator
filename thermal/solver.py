@@ -127,8 +127,8 @@ class SinkTemperatureProfile:
 class ShroudProfile:
     """Environment and equivalent shroud temperature for a named surface.
 
-    T_env    : (q_ir / sigma)^0.25  — incident IR environment temperature
-    T_shroud : (q_abs / (eps * sigma))^0.25  — equivalent shroud temperature
+    T_env    : (q_total / sigma)^0.25  — complete incident flux environment temperature (all sources, material-independent)
+    T_shroud : (mean(q_abs) / (eps * sigma))^0.25  — spatially-uniform equivalent shroud temperature
     """
     surface_name: str
     u: np.ndarray
@@ -369,26 +369,30 @@ def effective_sink_temperature(background):
 def shroud_temperature(background, *, alpha_solar, epsilon):
     """Compute environment and equivalent shroud temperatures.
 
-    T_env is the incident IR environment temperature (no material dependence).
-    T_shroud is the equivalent blackbody enclosure temperature that delivers
-    the same total absorbed flux to a surface with given alpha and epsilon.
+    T_env is the complete incident flux environment temperature (all sources:
+    earth IR, albedo, solar, solar panel IR, body IR).  Material-independent.
+    T_shroud is the spatially-uniform equivalent shroud temperature — the single
+    temperature to set TVAC shroud walls to, matching the spatially-averaged
+    absorbed flux for a surface with given alpha and epsilon.
     """
     _validate_background(background)
     alpha_solar, epsilon = _validate_material_properties(
         alpha_solar=alpha_solar, epsilon=epsilon,
     )
 
-    q_ir = np.maximum(
-        background.earth_ir + background.solar_panel_ir + background.body_ir,
+    q_total = np.maximum(
+        background.earth_ir + background.albedo + background.solar
+        + background.solar_panel_ir + background.body_ir,
         0.0,
     )
     q_absorbed = np.maximum(
         _absorbed_flux(background, alpha_solar=alpha_solar, epsilon=epsilon),
         0.0,
     )
+    q_abs_mean = q_absorbed.mean(axis=(1, 2), keepdims=True)
 
-    T_env = (q_ir / SIGMA_SB) ** 0.25
-    T_shroud = (q_absorbed / (epsilon * SIGMA_SB)) ** 0.25
+    T_env = (q_total / SIGMA_SB) ** 0.25
+    T_shroud = (q_abs_mean / (epsilon * SIGMA_SB)) ** 0.25
 
     return ShroudProfile(
         surface_name=background.surface_name,

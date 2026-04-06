@@ -212,6 +212,7 @@ def plot_flux_trace(ax, bg, *,
         ax.fill_between(u_deg, lo, hi, color=color, alpha=0.18, linewidth=0)
         ax.plot(u_deg, mean, lw=1.8, color=color, label=label)
 
+    ax.set_xlim(u_deg[0], u_deg[-1])
     ax.set_xlabel('argument of latitude u [deg]')
     ax.set_ylabel('incident flux [W m⁻²]')
     ax.set_title(

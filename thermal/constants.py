@@ -43,9 +43,9 @@ class Material:
     rho:   float   # density               [kg / m³]
 
 
-SOLAR_CELL           = Coating("Solar Cell",            alpha=0.91, epsilon=0.91)
-CLEAR_HARD_ANODISED  = Coating("Clear-hard Anodised",   alpha=0.62, epsilon=0.83)
-WHITE_PAINT_A276_Z93 = Coating("White Paint A276_Z93",  alpha=0.20, epsilon=0.88)
+SOLAR_CELL           = Coating("Solar Cell",             alpha=0.91, epsilon=0.91)
+CLEAR_HARD_ANODISED  = Coating("Clear-hard Anodised",    alpha=0.62, epsilon=0.83)
+WHITE_PAINT_A276_Z93 = Coating("White Paint A276_Z93",   alpha=0.20, epsilon=0.88)
 WHITE_SOLDERMASK     = Coating("White Soldermask",       alpha=0.26, epsilon=0.88)
 SURTEC_650           = Coating("Surtec 650",             alpha=0.16, epsilon=0.04)
 CLEAR_ANODISED       = Coating("Clear Anodised",         alpha=0.34, epsilon=0.71)
